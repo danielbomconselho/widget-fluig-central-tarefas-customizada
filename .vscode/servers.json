@@ -1,0 +1,29 @@
+{
+	"version": "1.0.0",
+	"configurations": [
+		{
+			"id": "g4071u2u49mfed5c4tje5qbsilnmi",
+			"name": "Desenvolvimento",
+			"host": "concrematengenharia192281.fluig.cloudtotvs.com.br",
+			"ssl": true,
+			"port": 11451,
+			"username": "daniel_sales",
+			"password": "eyJpdiI6IjUzOWRkZmJkOTJkNjZhYzEyYjNjMjc3ODE4MGZlYzE0Iiwic2FsdCI6IjM4ZmI5YWFkZDA3ODE1MWFiN2E4ZjQxNjhiMjk5YmE2IiwidGV4dCI6IjNiMTE3ZTYzZmJhZTJjMjY5MzBhNjk5NmQ5OWNhODQ5In0=",
+			"userCode": "10051007",
+			"confirmExporting": false,
+			"companyId": 1
+		},
+		{
+			"id": "9ftq5eqf6bmk2n7dogca0cn7po0mk",
+			"name": "Produção",
+			"host": "concrematengenharia192278.fluig.cloudtotvs.com.br",
+			"ssl": true,
+			"port": 443,
+			"username": "daniel.sales",
+			"password": "eyJpdiI6ImQ5Y2NiZDg2Njc1MzkzZWVhZDhlYzcwY2MwZDA3ODEyIiwic2FsdCI6ImY2YzM0NzFiMzg2Y2E1YzgyNDM5ZmY2ZDE2YWFlYTEyIiwidGV4dCI6ImJmY2QxZTllYjFkOTJkMjMxM2QxN2YwNTE0ODZhZTEyIn0=",
+			"userCode": "01362904694",
+			"confirmExporting": true,
+			"companyId": 1
+		}
+	]
+}
