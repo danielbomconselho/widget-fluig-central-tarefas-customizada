@@ -7,6 +7,7 @@ var Central_de_tarefas = SuperWidget.extend({
     currentStatus: null,
     currentProcess: null,
     carouselIndex: 0,
+    i18n: {},
 
     // === Fase 0: instrumentação opt-in de performance ===
     // Para ATIVAR em homologação (cobre o init na próxima recarga):
@@ -48,6 +49,40 @@ var Central_de_tarefas = SuperWidget.extend({
         console.log('[CentralTarefas][perf] ' + label + ' counters:', JSON.stringify(this._perfCounters || {}));
     },
 
+    _t: function(key) {
+        return this.i18n && this.i18n[key] ? this.i18n[key] : key;
+    },
+
+    _format: function(template, values) {
+        values = values || [];
+        return String(template || '').replace(/\{(\d+)\}/g, function(match, index) {
+            return values[index] !== undefined ? values[index] : match;
+        });
+    },
+
+    _getStatusLabels: function(variant) {
+        return {
+            andamento: this._t('central.tarefas.status.andamento'),
+            concluidas: this._t('central.tarefas.status.concluidas'),
+            atrasados: this._t('central.tarefas.status.atrasadas'),
+            geral: variant === 'carousel'
+                ? this._t('central.tarefas.status.gerais.tudo')
+                : this._t('central.tarefas.status.geral')
+        };
+    },
+
+    loadI18n: function() {
+        var instance = this;
+        var translations = {};
+        $('#central-tarefas-i18n-' + instance.instanceId).find('[data-i18n-key]').each(function() {
+            var key = $(this).attr('data-i18n-key');
+            if (key) {
+                translations[key] = $(this).text();
+            }
+        });
+        instance.i18n = translations;
+    },
+
     // Widget initialization
     init: function() {
         var instance = this;
@@ -63,6 +98,8 @@ var Central_de_tarefas = SuperWidget.extend({
 
         instance._perfCounters = {};
         var _initT0 = instance._perfNow();
+
+        instance.loadI18n();
 
         // Estado por instância (objetos não podem ficar no protótipo)
         instance.filters = { solicitante: 'all', responsavel: 'all', categoria: 'all' };
@@ -319,11 +356,12 @@ var Central_de_tarefas = SuperWidget.extend({
         // Loader simples enquanto a chamada async resolve a tarefa
         try {
             win.document.open();
+            var openingRequestText = instance._t('central.tarefas.abrindo.solicitacao');
             win.document.write(
-                '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
-                '<title>Abrindo solicitação…</title>' +
+                '<!doctype html><html><head><meta charset="utf-8">' +
+                '<title>' + instance.escapeHtml(openingRequestText) + '</title>' +
                 '<style>body{font-family:Lato,Arial,sans-serif;color:#5a5a5a;padding:40px;text-align:center}</style>' +
-                '</head><body>Abrindo solicitação…</body></html>'
+                '</head><body>' + instance.escapeHtml(openingRequestText) + '</body></html>'
             );
             win.document.close();
         } catch (eDoc) {
@@ -340,7 +378,7 @@ var Central_de_tarefas = SuperWidget.extend({
             try {
                 win.location.href = targetUrl;
             } catch (eNav) {
-                console.error("Não foi possível navegar a janela para a solicitação:", eNav);
+                    console.error(instance._t('central.tarefas.console.erro.navegar.solicitacao'), eNav);
             }
         };
         var timeoutHandle = setTimeout(function() {
@@ -418,7 +456,7 @@ var Central_de_tarefas = SuperWidget.extend({
                             // Dataset retorna "null" como string para valores nulos do SQL
                             if (aid === 'null' || aid === undefined) aid = null;
                             activeTaskMap[task.NUM_PROCES].push({
-                                activityDescription: task.DES_ESTADO || ("Atividade " + task.NUM_SEQ_ESTADO),
+                        activityDescription: task.DES_ESTADO || this._format(this._t('central.tarefas.processo.atividade'), [task.NUM_SEQ_ESTADO]),
                                 deadline: task.DEADLINE,
                                 assigneeId: aid
                             });
@@ -471,7 +509,7 @@ var Central_de_tarefas = SuperWidget.extend({
                     // Solicitante: guarda id e name separados (login técnico pode vir em qualquer um)
                     var requesterId = w.requesterId || null;
                     var requesterName = w.requesterName || null;
-                    var requester = requesterName || requesterId || "Solicitante";
+                    var requester = requesterName || requesterId || this._t('central.tarefas.filtro.solicitante');
                     var start = w.startDate || w.startPeriod;
 
                     // Determine request state (active/inactive)
@@ -488,10 +526,10 @@ var Central_de_tarefas = SuperWidget.extend({
                     // Tarefas ativas desse processo (pode haver múltiplas em paralelismo/pool)
                     var currentTasks = activeTaskMap[instanceId] || [];
                     var currentTask = currentTasks[0]; // Tarefa principal para exibição
-                    var currentActivity = "Finalizado";
+                    var currentActivity = this._t('central.tarefas.processo.finalizado');
                     var status = "concluidas";
                     if (active) {
-                        currentActivity = currentTask ? currentTask.activityDescription : "Início";
+                        currentActivity = currentTask ? currentTask.activityDescription : this._t('central.tarefas.processo.inicio');
                         // Processo está atrasado se QUALQUER tarefa ativa estiver vencida
                         var isDelayed = false;
                         var hasMoment = typeof moment !== 'undefined';
@@ -548,8 +586,12 @@ var Central_de_tarefas = SuperWidget.extend({
                         assigneeIds: assigneeIds,
                         cardDocumentId: cardDocumentId,
                         descriptor: descriptorText,
-                        description: "Solicitação gerada para o processo " + procName,
-                        priority: instanceId % 3 === 0 ? "Alta" : (instanceId % 3 === 1 ? "Média" : "Baixa")
+                        description: this._format(this._t('central.tarefas.solicitacao.descricao'), [procName]),
+                        priority: instanceId % 3 === 0
+                            ? this._t('central.tarefas.prioridade.alta')
+                            : (instanceId % 3 === 1
+                                ? this._t('central.tarefas.prioridade.media')
+                                : this._t('central.tarefas.prioridade.baixa'))
                     });
                 }
             }
@@ -735,7 +777,7 @@ var Central_de_tarefas = SuperWidget.extend({
         if (id && instance.colleagueMap[id]) return instance.colleagueMap[id];
         if (rawName) return rawName;
         if (id) return id;
-        return 'Solicitante';
+        return this._t('central.tarefas.filtro.solicitante');
     },
 
     // Reprocessa instance.requests substituindo o label do solicitante pelo nome amigável.
@@ -776,12 +818,12 @@ var Central_de_tarefas = SuperWidget.extend({
 
         var $solSelect = root.find('#filter-solicitante-' + instance.instanceId);
         $solSelect.empty();
-        $solSelect.append('<option value="all">Todos</option>');
+        $solSelect.append('<option value="all">' + instance.escapeHtml(instance._t('central.tarefas.filtro.todos')) + '</option>');
         solicitantesArr.forEach(function(s) {
             $solSelect.append('<option value="' + instance.escapeHtml(s.id) + '">' + instance.escapeHtml(s.label) + '</option>');
         });
         if (hasNoRequesterId) {
-            $solSelect.append('<option value="__no_requester__">Sem solicitante</option>');
+            $solSelect.append('<option value="__no_requester__">' + instance.escapeHtml(instance._t('central.tarefas.filtro.sem.solicitante')) + '</option>');
         }
 
         // --- RESPONSÁVEIS ---
@@ -805,12 +847,12 @@ var Central_de_tarefas = SuperWidget.extend({
 
         var $respSelect = root.find('#filter-responsavel-' + instance.instanceId);
         $respSelect.empty();
-        $respSelect.append('<option value="all">Todos</option>');
+        $respSelect.append('<option value="all">' + instance.escapeHtml(instance._t('central.tarefas.filtro.todos')) + '</option>');
         responsaveisArr.forEach(function(r) {
             $respSelect.append('<option value="' + instance.escapeHtml(r.id) + '">' + instance.escapeHtml(r.label) + '</option>');
         });
         if (hasUnassigned) {
-            $respSelect.append('<option value="__unassigned__">Não atribuído</option>');
+            $respSelect.append('<option value="__unassigned__">' + instance.escapeHtml(instance._t('central.tarefas.filtro.nao.atribuido')) + '</option>');
         }
 
         // --- CATEGORIAS ---
@@ -829,12 +871,12 @@ var Central_de_tarefas = SuperWidget.extend({
 
         var $catSelect = root.find('#filter-categoria-' + instance.instanceId);
         $catSelect.empty();
-        $catSelect.append('<option value="all">Todas</option>');
+        $catSelect.append('<option value="all">' + instance.escapeHtml(instance._t('central.tarefas.filtro.todas')) + '</option>');
         categoriasArr.forEach(function(c) {
             $catSelect.append('<option value="' + instance.escapeHtml(c) + '">' + instance.escapeHtml(c) + '</option>');
         });
         if (hasNoneCategory) {
-            $catSelect.append('<option value="__none__">Sem categoria</option>');
+            $catSelect.append('<option value="__none__">' + instance.escapeHtml(instance._t('central.tarefas.filtro.sem.categoria')) + '</option>');
         }
 
         instance.updateFiltersBarUI();
@@ -858,14 +900,14 @@ var Central_de_tarefas = SuperWidget.extend({
 
         if (instance._loadStatus === 'error') {
             isError = true;
-            title = 'Não foi possível carregar as solicitações no momento.';
-            subtitle = 'Tente recarregar a página. Se o problema persistir, acione o suporte técnico.';
+            title = instance._t('central.tarefas.estado.erro.titulo');
+            subtitle = instance._t('central.tarefas.estado.erro.subtitulo');
         } else if (instance._loadStatus === 'no-env') {
-            title = 'Ambiente Fluig não detectado.';
-            subtitle = 'Esta widget precisa rodar dentro do Fluig para carregar solicitações.';
+            title = instance._t('central.tarefas.estado.sem.ambiente.titulo');
+            subtitle = instance._t('central.tarefas.estado.sem.ambiente.subtitulo');
         } else {
-            title = 'Nenhuma solicitação encontrada para o seu usuário.';
-            subtitle = 'Quando houver solicitações atribuídas a você ou abertas por você, elas aparecerão aqui.';
+            title = instance._t('central.tarefas.estado.vazio.titulo');
+            subtitle = instance._t('central.tarefas.estado.vazio.subtitulo');
         }
 
         $box.toggleClass('is-error', isError);
@@ -952,7 +994,7 @@ var Central_de_tarefas = SuperWidget.extend({
             var solValue = instance.filters.solicitante;
             var solLabel;
             if (solValue === '__no_requester__') {
-                solLabel = 'Sem solicitante';
+                solLabel = instance._t('central.tarefas.filtro.sem.solicitante');
             } else {
                 // Procura o primeiro request com este requesterId para obter o label resolvido
                 var match = instance.requests.find(function(r) { return r.requesterId === solValue; });
@@ -960,40 +1002,35 @@ var Central_de_tarefas = SuperWidget.extend({
             }
             chips.push({
                 key: 'solicitante',
-                label: 'Solicitante',
+                label: instance._t('central.tarefas.filtro.solicitante'),
                 value: solLabel
             });
         }
         if (instance.filters.responsavel !== 'all') {
             var respValue = instance.filters.responsavel;
             var respLabel = respValue === '__unassigned__'
-                ? 'Não atribuído'
+                ? instance._t('central.tarefas.filtro.nao.atribuido')
                 : (instance.colleagueMap[respValue] || respValue);
             chips.push({
                 key: 'responsavel',
-                label: 'Responsável',
+                label: instance._t('central.tarefas.filtro.responsavel'),
                 value: respLabel
             });
         }
         if (instance.filters.categoria !== 'all') {
             var catValue = instance.filters.categoria;
-            var catLabel = catValue === '__none__' ? 'Sem categoria' : catValue;
+            var catLabel = catValue === '__none__' ? instance._t('central.tarefas.filtro.sem.categoria') : catValue;
             chips.push({
                 key: 'categoria',
-                label: 'Categoria',
+                label: instance._t('central.tarefas.filtro.categoria'),
                 value: catLabel
             });
         }
         if (instance.currentStatus) {
-            var statusLabels = {
-                andamento: 'Em Andamento',
-                concluidas: 'Concluídas',
-                atrasados: 'Atrasadas',
-                geral: 'Geral'
-            };
+            var statusLabels = instance._getStatusLabels();
             chips.push({
                 key: 'status',
-                label: 'Status',
+                label: instance._t('central.tarefas.filtro.status'),
                 value: statusLabels[instance.currentStatus] || instance.currentStatus
             });
         }
@@ -1005,7 +1042,7 @@ var Central_de_tarefas = SuperWidget.extend({
                 '<span class="filter-chip" data-chip-key="' + instance.escapeHtml(chip.key) + '">' +
                     '<span class="filter-chip-label">' + instance.escapeHtml(chip.label) + ':</span>' +
                     '<span class="filter-chip-value">' + instance.escapeHtml(chip.value) + '</span>' +
-                    '<button type="button" class="filter-chip-remove" aria-label="Remover filtro ' + instance.escapeHtml(chip.label) + '">&times;</button>' +
+                    '<button type="button" class="filter-chip-remove" aria-label="' + instance.escapeHtml(instance._format(instance._t('central.tarefas.filtro.remover'), [chip.label])) + '">&times;</button>' +
                 '</span>';
             $chipsContainer.append(chipHtml);
         });
@@ -1109,12 +1146,7 @@ var Central_de_tarefas = SuperWidget.extend({
         root.find('[data-status-card="' + status + '"]').addClass('active');
 
         // Update Carousel Title
-        var statusLabels = {
-            andamento: 'Em Andamento',
-            concluidas: 'Concluídas',
-            atrasados: 'Atrasadas',
-            geral: 'Gerais (Tudo)'
-        };
+        var statusLabels = instance._getStatusLabels('carousel');
         $('#selected-status-label-' + instance.instanceId).text(statusLabels[status]);
 
         instance.updateFiltersBarUI();
@@ -1166,9 +1198,9 @@ var Central_de_tarefas = SuperWidget.extend({
             var hasAnyAfterBaseFilters = baseRequests.length > 0;
             var emptyMsg;
             if (hasAnyData && !hasAnyAfterBaseFilters) {
-                emptyMsg = 'Nenhuma solicitação encontrada com os filtros atuais.';
+                emptyMsg = instance._t('central.tarefas.empty.filtros');
             } else {
-                emptyMsg = 'Nenhum processo encontrado com solicitações nessa situação.';
+                emptyMsg = instance._t('central.tarefas.empty.processos.status');
             }
             track.append('<div style="padding: 20px; color: var(--text-muted); width: 100%; text-align: center; font-weight: 500;">' + instance.escapeHtml(emptyMsg) + '</div>');
             $('#carousel-section-' + instance.instanceId).removeClass('d-none');
@@ -1365,13 +1397,15 @@ var Central_de_tarefas = SuperWidget.extend({
         }
 
         // Update total counter in Kanban badge
-        $('#kanban-total-requests-' + instance.instanceId).text(finalRequests.length + (finalRequests.length === 1 ? ' solicitação' : ' solicitações'));
+        $('#kanban-total-requests-' + instance.instanceId).text(finalRequests.length + (finalRequests.length === 1
+            ? ' ' + instance._t('central.tarefas.contador.solicitacao.singular')
+            : ' ' + instance._t('central.tarefas.contador.solicitacao.plural')));
 
         // Retrieve the ordered workflow activities for this process
         var activities = instance.getProcessActivities(processId);
 
         if (activities.length === 0) {
-            board.append('<div style="padding: 20px; color: var(--text-muted); width: 100%; text-align: center;">Nenhuma atividade definida para este processo.</div>');
+            board.append('<div style="padding: 20px; color: var(--text-muted); width: 100%; text-align: center;">' + instance.escapeHtml(instance._t('central.tarefas.empty.atividade')) + '</div>');
             return;
         }
 
@@ -1405,7 +1439,7 @@ var Central_de_tarefas = SuperWidget.extend({
                     '<div class="column-cards-container">';
 
             if (activityRequests.length === 0) {
-                colHtml += '<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 16px 0; border: 1px dashed var(--border-color); border-radius: var(--radius-sm); background-color: var(--bg-card);">Nenhuma solicitação</div>';
+                colHtml += '<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 16px 0; border: 1px dashed var(--border-color); border-radius: var(--radius-sm); background-color: var(--bg-card);">' + instance.escapeHtml(instance._t('central.tarefas.empty.solicitacao')) + '</div>';
             } else {
                 activityRequests.forEach(function(req) {
                     var prioClass = 'priority-' + (req.priority || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -1416,7 +1450,7 @@ var Central_de_tarefas = SuperWidget.extend({
 
                     // Respons\u00e1vel: resolve nome amig\u00e1vel do primeiro assignee (se houver)
                     var respId = (req.assigneeIds && req.assigneeIds.length > 0) ? req.assigneeIds[0] : null;
-                    var respName = respId ? instance.getUserDisplayName(respId, null) : 'N\u00e3o atribu\u00eddo';
+                    var respName = respId ? instance.getUserDisplayName(respId, null) : instance._t('central.tarefas.filtro.nao.atribuido');
                     var respExtra = (req.assigneeIds && req.assigneeIds.length > 1)
                         ? ' +' + (req.assigneeIds.length - 1) : '';
 
@@ -1425,7 +1459,7 @@ var Central_de_tarefas = SuperWidget.extend({
                             'data-process-instance="' + instance.escapeHtml(req.processInstanceId) + '" ' +
                             'data-process-id="' + instance.escapeHtml(req.processId) + '" ' +
                             'tabindex="0" role="button" ' +
-                            'title="Abrir solicita\u00e7\u00e3o ' + instance.escapeHtml(req.id) + ' em nova aba">' +
+                            'title="' + instance.escapeHtml(instance._format(instance._t('central.tarefas.tooltip.abrir.solicitacao'), [req.id])) + '">' +
 	                            '<div class="card-header-info">' +
 	                                '<span class="card-id">' +
 	                                    instance.escapeHtml(req.id) +
@@ -1438,10 +1472,10 @@ var Central_de_tarefas = SuperWidget.extend({
                                           '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>' +
                                           '<line x1="12" y1="9" x2="12" y2="13"></line>' +
                                           '<line x1="12" y1="17" x2="12.01" y2="17"></line>' +
-                                      '</svg>ATRASADO</span>'
+                                      '</svg>' + instance.escapeHtml(instance._t('central.tarefas.badge.atrasado')) + '</span>'
                                 : '') +
                             '<p class="card-description">' + instance.escapeHtml(req.descriptor || req.description) + '</p>' +
-                            '<div class="card-assignee" title="Respons\u00e1vel: ' + instance.escapeHtml(respName) + respExtra + '">' +
+                            '<div class="card-assignee" title="' + instance.escapeHtml(instance._format(instance._t('central.tarefas.tooltip.responsavel'), [respName + respExtra])) + '">' +
                                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-assignee-icon">' +
                                     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>' +
                                     '<circle cx="12" cy="7" r="4"></circle>' +
@@ -1449,7 +1483,7 @@ var Central_de_tarefas = SuperWidget.extend({
                                 '<span class="card-assignee-name">' + instance.escapeHtml(respName) + respExtra + '</span>' +
                             '</div>' +
                             '<div class="card-footer-info">' +
-                                '<span class="card-requester" title="Solicitante: ' + instance.escapeHtml(req.requester) + '">' + instance.escapeHtml(req.requester) + '</span>' +
+                                '<span class="card-requester" title="' + instance.escapeHtml(instance._format(instance._t('central.tarefas.tooltip.solicitante'), [req.requester])) + '">' + instance.escapeHtml(req.requester) + '</span>' +
                                 '<span class="priority-badge ' + prioClass + '">' + instance.escapeHtml(req.priority) + '</span>' +
                             '</div>' +
                         '</div>';

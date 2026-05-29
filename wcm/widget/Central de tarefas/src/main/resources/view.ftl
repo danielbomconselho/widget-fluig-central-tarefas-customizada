@@ -1,35 +1,79 @@
+<#ftl encoding="UTF-8">
+<meta charset="UTF-8">
 <script type="application/javascript" src="/webdesk/vcXMLRPC.js" charset="utf-8"></script>
 <div id="Central_de_tarefas_${instanceId}" class="super-widget wcm-widget-class fluig-style-guide" data-params="Central_de_tarefas.instance()">
+    <div id="central-tarefas-i18n-${instanceId}" class="d-none" aria-hidden="true">
+        <span data-i18n-key="central.tarefas.abrindo.solicitacao">${i18n.getTranslation('central.tarefas.abrindo.solicitacao')}</span>
+        <span data-i18n-key="central.tarefas.badge.atrasado">${i18n.getTranslation('central.tarefas.badge.atrasado')}</span>
+        <span data-i18n-key="central.tarefas.console.erro.navegar.solicitacao">${i18n.getTranslation('central.tarefas.console.erro.navegar.solicitacao')}</span>
+        <span data-i18n-key="central.tarefas.contador.solicitacao.plural">${i18n.getTranslation('central.tarefas.contador.solicitacao.plural')}</span>
+        <span data-i18n-key="central.tarefas.contador.solicitacao.singular">${i18n.getTranslation('central.tarefas.contador.solicitacao.singular')}</span>
+        <span data-i18n-key="central.tarefas.empty.atividade">${i18n.getTranslation('central.tarefas.empty.atividade')}</span>
+        <span data-i18n-key="central.tarefas.empty.filtros">${i18n.getTranslation('central.tarefas.empty.filtros')}</span>
+        <span data-i18n-key="central.tarefas.empty.processos.status">${i18n.getTranslation('central.tarefas.empty.processos.status')}</span>
+        <span data-i18n-key="central.tarefas.empty.solicitacao">${i18n.getTranslation('central.tarefas.empty.solicitacao')}</span>
+        <span data-i18n-key="central.tarefas.estado.erro.subtitulo">${i18n.getTranslation('central.tarefas.estado.erro.subtitulo')}</span>
+        <span data-i18n-key="central.tarefas.estado.erro.titulo">${i18n.getTranslation('central.tarefas.estado.erro.titulo')}</span>
+        <span data-i18n-key="central.tarefas.estado.sem.ambiente.subtitulo">${i18n.getTranslation('central.tarefas.estado.sem.ambiente.subtitulo')}</span>
+        <span data-i18n-key="central.tarefas.estado.sem.ambiente.titulo">${i18n.getTranslation('central.tarefas.estado.sem.ambiente.titulo')}</span>
+        <span data-i18n-key="central.tarefas.estado.vazio.subtitulo">${i18n.getTranslation('central.tarefas.estado.vazio.subtitulo')}</span>
+        <span data-i18n-key="central.tarefas.estado.vazio.titulo">${i18n.getTranslation('central.tarefas.estado.vazio.titulo')}</span>
+        <span data-i18n-key="central.tarefas.filtro.categoria">${i18n.getTranslation('central.tarefas.filtro.categoria')}</span>
+        <span data-i18n-key="central.tarefas.filtro.nao.atribuido">${i18n.getTranslation('central.tarefas.filtro.nao.atribuido')}</span>
+        <span data-i18n-key="central.tarefas.filtro.remover">${i18n.getTranslation('central.tarefas.filtro.remover')}</span>
+        <span data-i18n-key="central.tarefas.filtro.responsavel">${i18n.getTranslation('central.tarefas.filtro.responsavel')}</span>
+        <span data-i18n-key="central.tarefas.filtro.sem.categoria">${i18n.getTranslation('central.tarefas.filtro.sem.categoria')}</span>
+        <span data-i18n-key="central.tarefas.filtro.sem.solicitante">${i18n.getTranslation('central.tarefas.filtro.sem.solicitante')}</span>
+        <span data-i18n-key="central.tarefas.filtro.solicitante">${i18n.getTranslation('central.tarefas.filtro.solicitante')}</span>
+        <span data-i18n-key="central.tarefas.filtro.status">${i18n.getTranslation('central.tarefas.filtro.status')}</span>
+        <span data-i18n-key="central.tarefas.filtro.todas">${i18n.getTranslation('central.tarefas.filtro.todas')}</span>
+        <span data-i18n-key="central.tarefas.filtro.todos">${i18n.getTranslation('central.tarefas.filtro.todos')}</span>
+        <span data-i18n-key="central.tarefas.prioridade.alta">${i18n.getTranslation('central.tarefas.prioridade.alta')}</span>
+        <span data-i18n-key="central.tarefas.prioridade.baixa">${i18n.getTranslation('central.tarefas.prioridade.baixa')}</span>
+        <span data-i18n-key="central.tarefas.prioridade.media">${i18n.getTranslation('central.tarefas.prioridade.media')}</span>
+        <span data-i18n-key="central.tarefas.processo.atividade">${i18n.getTranslation('central.tarefas.processo.atividade')}</span>
+        <span data-i18n-key="central.tarefas.processo.finalizado">${i18n.getTranslation('central.tarefas.processo.finalizado')}</span>
+        <span data-i18n-key="central.tarefas.processo.inicio">${i18n.getTranslation('central.tarefas.processo.inicio')}</span>
+        <span data-i18n-key="central.tarefas.solicitacao.descricao">${i18n.getTranslation('central.tarefas.solicitacao.descricao')}</span>
+        <span data-i18n-key="central.tarefas.status.andamento">${i18n.getTranslation('central.tarefas.status.andamento')}</span>
+        <span data-i18n-key="central.tarefas.status.atrasadas">${i18n.getTranslation('central.tarefas.status.atrasadas')}</span>
+        <span data-i18n-key="central.tarefas.status.concluidas">${i18n.getTranslation('central.tarefas.status.concluidas')}</span>
+        <span data-i18n-key="central.tarefas.status.gerais.tudo">${i18n.getTranslation('central.tarefas.status.gerais.tudo')}</span>
+        <span data-i18n-key="central.tarefas.status.geral">${i18n.getTranslation('central.tarefas.status.geral')}</span>
+        <span data-i18n-key="central.tarefas.tooltip.abrir.solicitacao">${i18n.getTranslation('central.tarefas.tooltip.abrir.solicitacao')}</span>
+        <span data-i18n-key="central.tarefas.tooltip.responsavel">${i18n.getTranslation('central.tarefas.tooltip.responsavel')}</span>
+        <span data-i18n-key="central.tarefas.tooltip.solicitante">${i18n.getTranslation('central.tarefas.tooltip.solicitante')}</span>
+    </div>
     <div class="task-dashboard-container">
         <!-- Dashboard Header -->
         <header class="dashboard-header">
             <button id="btn-nova-solicitacao" data-nova-sol class="btn btn-primary" style="float: right;">
-                <i class="fas fa-plus"></i>Nova Solicitação
+                <i class="fas fa-plus"></i>${i18n.getTranslation('central.tarefas.botao.nova.solicitacao')}
             </button>
             <div class="dashboard-header-text">
-                <h1 class="dashboard-title">Central de Tarefas Inteligente</h1>
-                <p class="dashboard-subtitle">Visualize o andamento dos processos, navegue entre solicitações e acompanhe as atividades em tempo real</p>
+                <h1 class="dashboard-title">${i18n.getTranslation('central.tarefas.titulo')}</h1>
+                <p class="dashboard-subtitle">${i18n.getTranslation('central.tarefas.subtitulo')}</p>
             </div>
         </header>
 
         <!-- Filters Bar (solicitante, responsável, categoria) -->
         <div class="filters-bar">
             <div class="filter-group">
-                <label class="filter-label" for="filter-solicitante-${instanceId}">Solicitante</label>
+                <label class="filter-label" for="filter-solicitante-${instanceId}">${i18n.getTranslation('central.tarefas.filtro.solicitante')}</label>
                 <select id="filter-solicitante-${instanceId}" class="filter-select" data-filter-key="solicitante">
-                    <option value="all">Todos</option>
+                    <option value="all">${i18n.getTranslation('central.tarefas.filtro.todos')}</option>
                 </select>
             </div>
             <div class="filter-group">
-                <label class="filter-label" for="filter-responsavel-${instanceId}">Responsável</label>
+                <label class="filter-label" for="filter-responsavel-${instanceId}">${i18n.getTranslation('central.tarefas.filtro.responsavel')}</label>
                 <select id="filter-responsavel-${instanceId}" class="filter-select" data-filter-key="responsavel">
-                    <option value="all">Todos</option>
+                    <option value="all">${i18n.getTranslation('central.tarefas.filtro.todos')}</option>
                 </select>
             </div>
             <div class="filter-group">
-                <label class="filter-label" for="filter-categoria-${instanceId}">Categoria</label>
+                <label class="filter-label" for="filter-categoria-${instanceId}">${i18n.getTranslation('central.tarefas.filtro.categoria')}</label>
                 <select id="filter-categoria-${instanceId}" class="filter-select" data-filter-key="categoria">
-                    <option value="all">Todas</option>
+                    <option value="all">${i18n.getTranslation('central.tarefas.filtro.todas')}</option>
                 </select>
             </div>
             <button type="button" id="clear-filters-${instanceId}" class="clear-filters-btn d-none">
@@ -37,7 +81,7 @@
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
-                Limpar Filtros
+                ${i18n.getTranslation('central.tarefas.botao.limpar.filtros')}
             </button>
         </div>
 
@@ -56,7 +100,7 @@
                         </svg>
                     </div>
                     <div class="kpi-info">
-                        <span class="kpi-title">Em Andamento</span>
+                        <span class="kpi-title">${i18n.getTranslation('central.tarefas.status.andamento')}</span>
                         <span class="kpi-counter" id="count-andamento-${instanceId}">0</span>
                     </div>
                 </div>
@@ -73,7 +117,7 @@
                         </svg>
                     </div>
                     <div class="kpi-info">
-                        <span class="kpi-title">Concluídos</span>
+                        <span class="kpi-title">${i18n.getTranslation('central.tarefas.status.concluidos')}</span>
                         <span class="kpi-counter" id="count-concluidas-${instanceId}">0</span>
                     </div>
                 </div>
@@ -91,7 +135,7 @@
                         </svg>
                     </div>
                     <div class="kpi-info">
-                        <span class="kpi-title">Atrasados</span>
+                        <span class="kpi-title">${i18n.getTranslation('central.tarefas.status.atrasados')}</span>
                         <span class="kpi-counter" id="count-atrasados-${instanceId}">0</span>
                     </div>
                 </div>
@@ -111,7 +155,7 @@
                         </svg>
                     </div>
                     <div class="kpi-info">
-                        <span class="kpi-title">Geral (Total)</span>
+                        <span class="kpi-title">${i18n.getTranslation('central.tarefas.status.geral.total')}</span>
                         <span class="kpi-counter" id="count-geral-${instanceId}">0</span>
                     </div>
                 </div>
@@ -124,7 +168,7 @@
             <div class="section-header">
                 <h3 class="section-title">
                     <span class="title-decorator"></span>
-                    Processos com Solicitações <span id="selected-status-label-${instanceId}"></span>
+                    ${i18n.getTranslation('central.tarefas.secao.processos')} <span id="selected-status-label-${instanceId}"></span>
                 </h3>
             </div>
             
@@ -154,14 +198,14 @@
             <div class="kanban-header">
                 <h3 class="section-title">
                     <span class="title-decorator"></span>
-                    Quadro Kanban: <span id="selected-process-label-${instanceId}"></span>
+                    ${i18n.getTranslation('central.tarefas.secao.kanban')}: <span id="selected-process-label-${instanceId}"></span>
                 </h3>
                 <div class="kanban-controls">
                     <div class="kanban-search-wrapper">
-                        <input type="text" class="form-control kanban-search-input" id="kanban-search-${instanceId}" placeholder="Buscar por código ou solicitante...">
+                        <input type="text" class="form-control kanban-search-input" id="kanban-search-${instanceId}" placeholder="${i18n.getTranslation('central.tarefas.busca.placeholder')}">
                     </div>
                     <div class="kanban-badge-info">
-                        <span id="kanban-total-requests-${instanceId}">0 solicitações</span>
+                        <span id="kanban-total-requests-${instanceId}">0 ${i18n.getTranslation('central.tarefas.contador.solicitacao.plural')}</span>
                     </div>
                 </div>
             </div>
