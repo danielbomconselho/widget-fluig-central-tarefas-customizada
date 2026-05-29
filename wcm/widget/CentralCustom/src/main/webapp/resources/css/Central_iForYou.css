@@ -1,0 +1,199 @@
+/* Coloque aqui seu codigo CSS */
+
+
+.thsticky {
+  position: -webkit-sticky;
+  position: sticky !important;
+  top: 0px !important; 
+  padding: 0px;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  z-index: 1000 !important;
+  box-shadow: none !important;
+}
+
+
+.regTarefasCol{
+	font-size: smaller !important;	
+}
+
+.regTarefasCab{
+	font-size: smaller !important;
+}
+
+.panel {
+  border: none !important;
+}
+
+.panel-green {
+  border-color: #5cb85c !important;
+}
+
+.panel-green > .panel-heading {
+  border-color: #5cb85c !important;
+  color: white !important;
+  /*background-color: #5cb85c !important;*/
+  background-image: linear-gradient(0deg, #273a1ae8, #00ff00);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-regua-green > .panel-heading {
+  border-color: #5cb85c !important;
+  color: white !important;
+  /*background-color: #5cb85c !important;*/
+  background-image: linear-gradient(0deg, #65ff00a8, #5cb85c);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-green > a {
+  color: #5cb85c !important;
+}
+.panel-green > a:hover {
+  color: #3d8b3d !important;
+}
+.panel-red {
+  border-color: #d9534f !important;
+}
+
+.panel-red > .panel-heading {
+  border-color: #ff0000 !important;  
+  color: #f5f5f5 !important;
+  /*background-color: #7171ce !important;*/
+  background-image: linear-gradient(-15deg, #463131de, #ff0000);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-regua-red > .panel-heading {
+  border-color: #d9534f !important;
+  color: white !important;
+  /*background-color: #d9534f !important;*/
+  background-image: linear-gradient(45deg, #ff00004a, #ff0000c2);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-error > .panel-heading {
+  border-color: #d9534f !important;
+  color: white !important;
+  /*background-color: #d9534f !important;*/
+  background-image: linear-gradient(45deg, #ff00004a, #ff0000c2);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-red > a {
+  color: #d9534f !important;
+}
+.panel-red > a:hover {
+  color: #b52b27 !important;
+}
+.panel-yellow {
+  border-color: #f0ad4e !important;
+}
+.panel-yellow > .panel-heading {
+  border-color: #f0ad4e !important;
+  color: white !important;
+  /*background-color: #f0ad4e !important;*/
+  background-image: linear-gradient(45deg, #daff0052, #f0ad4e);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+.panel-yellow > a {
+  color: #f0ad4e !important;
+}
+.panel-yellow > a:hover {
+  color: #df8a13 !important;
+}
+
+.panel-blue {
+  border-color: #7171ce !important;
+}
+.panel-blue > .panel-heading {
+  border-color: #527dd4 !important;
+  color: white !important;
+  /*background-color: #7171ce !important;*/
+  background-image: linear-gradient(45deg, #0051ff52, #7171ce);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+.panel-blue > a {
+  color: #7171ce !important;
+}
+.panel-blue > a:hover {
+  color: #3d8b3d !important;
+}
+
+.panel-gray > .panel-heading {
+  border-color: #525252 !important;  
+  color: white !important;
+  /*background-color: #7171ce !important;*/
+  background-image: linear-gradient(45deg, #05070a52, #525252);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.panel-rosybrown > .panel-heading {
+  border-color: #c74444 !important;  
+  color: white !important;
+  /*background-color: #7171ce !important;*/
+  background-image: linear-gradient(45deg, #d40b323d, #e64141);
+  /*text-shadow: 2px 2px 2px #000000bf;*/
+}
+
+.fa-lg {
+  font-size: 1.33333333em;
+  line-height: 0.75em;
+  vertical-align: -15%;
+}
+.fa-2x {
+  font-size: 2em !important;
+}
+.fa-3x {
+  font-size: 3em !important;
+}
+.fa-4x {
+  font-size: 4em !important;
+}
+.fa-5x {
+  font-size: 5em !important;
+}
+
+.headingSolic {	
+    padding-left: 5px;
+    padding-right: 5px;
+    padding-top: 10px;
+    padding-bottom: 10px;	
+}
+
+.huge {
+  font-size: 30px;
+}
+
+.wcm_widget {
+  padding: 0px !important;
+}
+
+.pageTitle {
+  display: none !important;
+}
+
+.tab-content {
+  margin-top: -70px !important;
+}
+
+.tabMinhasTAREFAS {
+  margin-top: 60px !important;
+  font-size: 17px !important;
+}
+
+.btnExcluir {
+  border-radius: 100px !important;
+  width: 40px !important;
+  height: 40px !important;
+}
+
+.btn {
+  outline:0 !important;
+}
+
+.btnVerAnexos {
+  border-radius: 100px !important;
+  width: 40px !important;
+  height: 40px !important;
+}

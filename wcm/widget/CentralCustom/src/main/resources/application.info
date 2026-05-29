@@ -1,0 +1,18 @@
+application.type=widget
+application.code=Central_iForYou
+application.title=Central iForYou
+application.description=Central_iForYou
+application.category=Rhino
+application.renderer=freemarker
+developer.code=adm.igor rodrigues
+developer.name=igor Rodrigues
+developer.url=http://www.fluig.com
+application.uiwidget=true
+application.mobileapp=true
+application.version=1.0.0
+view.file=view.ftl
+edit.file=edit.ftl
+locale.file.base.name=Central_iForYou
+application.resource.js.1=/resources/js/Central_iForYou.js?v=1.0.1
+application.resource.css.2=/resources/css/Central_iForYou.css?v=1.0.1
+application.tenant.code=1

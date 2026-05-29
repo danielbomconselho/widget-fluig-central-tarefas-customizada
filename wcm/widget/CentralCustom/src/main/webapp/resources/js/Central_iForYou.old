@@ -1,0 +1,1329 @@
+/*
+  
+  I FOR YOU
+  ANALISTA CRISTOFER GIRARDI
+             ATENCAO
+  *** NAO IDENTAR ESTE CODIGO ***
+  		1.0.0
+  		20200207
+*/
+var myTarefas, tableDataTarefasTarefas, myInstance, myData, COMPANY, myUSER, USER, PWSD, SERVER, myUSERName, listaGroup, myModalCanc;
+var Central_iForYou = SuperWidget.extend({
+    init: function() {
+        console.log('1.0.0')
+        /* ambiente thealth*/
+        //myInstance = $('#instanceId').val();
+
+        /* ambiente iForYou */
+        myInstance = this.instanceId;
+
+        var ds_usuarioIntegrador = DatasetFactory.getDataset("ds_usuario_integrador");
+        COMPANY = WCMAPI.getOrganizationId();
+        myUSER = WCMAPI.userCode;
+        SERVER = WCMAPI.serverURL;
+        // USER    = ds_usuarioIntegrador.values[0]["user"];           
+        // PWSD    = ds_usuarioIntegrador.values[0]["password"];
+        USER = 'admin'
+        PWSD = 'Senar@2016'
+
+        var const1 = DatasetFactory.createConstraint("colleaguePK.colleagueId", myUSER, myUSER, ConstraintType.MUST);
+        var dataset1 = DatasetFactory.getDataset("colleague", null, [const1], null);
+        myUSERName = dataset1.values[0]["colleagueName"];
+
+        /* BUSCAR TODOS OS GRUPOS A QUAL O USUARIO PERTENCE */
+        const1 = DatasetFactory.createConstraint("colleagueGroupPK.colleagueId", myUSER, myUSER, ConstraintType.MUST);
+        var datasetGrUsu = DatasetFactory.getDataset("colleagueGroup", null, [const1], null);
+
+        listaGroup = new Array();
+
+        if (datasetGrUsu.values !== undefined) {
+            if (datasetGrUsu.values.length > 0) {
+                for (var index1 = 0; index1 < datasetGrUsu.values.length; index1++) {
+                    listaGroup.push({
+                        "GRUPO": datasetGrUsu.values[index1]["colleagueGroupPK.groupId"]
+                    });
+                }
+            }
+        }
+
+        //--
+        setTimeout(function() {
+            carregarTarefas();
+            ajustaCSSbtnStatus();
+            $('#viewLoading').hide();
+        }, 300);
+
+
+        $(document).on("click", "[data-open-cancelamento]", function(ev) {
+
+            var txtObs = $('#txtObs').val();
+            var xProcesso = $('#CancProcesso').val();
+            var xAtividade = $('#CancAtividade').val();
+            var xLinha = $('#CancLinha').val();
+
+            if (txtObs === null || txtObs === undefined || txtObs === "") {
+                FLUIGC.toast({
+                    title: 'ATENÇÃO',
+                    message: "Por gentileza, preencher o campo Observação!",
+                    type: 'warning',
+                    timeout: 2000
+                });
+            } else {
+                /*
+                 * RECUPERAR THREAD DO PROCESSO A SER MOVIMENTADO
+                 */
+                var threadProcess =
+                    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.workflow.ecm.technology.totvs.com/"> ' +
+                    '   <soapenv:Header/>' +
+                    '   <soapenv:Body>' +
+                    '      <ws:getActualThread>' +
+                    '         <companyId>' + COMPANY + '</companyId>' +
+                    '         <username>' + USER + '</username>' +
+                    '         <password>' + PWSD + '</password>' +
+                    '         <processInstanceId>' + xProcesso + '</processInstanceId>' +
+                    '         <stateSequence>' + xAtividade + '</stateSequence>' +
+                    '      </ws:getActualThread>' +
+                    '   </soapenv:Body>' +
+                    '</soapenv:Envelope>';
+
+                // ENVIANDO REQUISICAO PARA RECUPERAR THREAD
+                var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMWorkflowEngineService?wsdl";
+                var parserprocessoCI = new DOMParser();
+                var xmlRequestprocessoCI = parserprocessoCI.parseFromString(threadProcess, "text/xml");
+
+                var xActualThread = 0;
+
+                WCMAPI.Create({
+                    url: wsUrl2,
+                    async: false,
+                    contentType: "text/xml; charset=UTF-8",
+                    dataType: "xml",
+                    data: xmlRequestprocessoCI,
+                    error: function(data) {
+                        // ERRO NA TENTATIVA DE RECUPERAR A THREAD DO PROCESSO
+                        FLUIGC.toast({
+                            message: 'Não foi possível recuperar a Thread do processo selecionado. \n' + JSON.stringify(data),
+                            type: 'danger'
+                        })
+                    },
+                    success: function(data) {
+                        if (data.key == 'ERROR') {
+                            FLUIGC.toast({
+                                message: 'Erro ao tentar recuperar a Thread do processo nº ' + processo + '. ' + data.content.message,
+                                type: 'danger'
+                            })
+                        } else {
+                            //-- VALOR THREAD				
+                            xActualThread = parseInt($(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML);
+
+                            // ENVIANDO REQUISICAO PARA ASSUMIR PROCESSO
+                            var taskProcess =
+                                '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.workflow.ecm.technology.totvs.com/">' +
+                                '<soapenv:Header/>' +
+                                '<soapenv:Body>' +
+                                '    <ws:cancelInstance>' +
+                                '         <companyId>' + COMPANY + '</companyId>' +
+                                '         <username>' + USER + '</username>' +
+                                '         <password>' + PWSD + '</password>' +
+                                '         <processInstanceId>' + xProcesso + '</processInstanceId> ' +
+                                '         <userId>' + myUSER + '</userId>' +
+                                '         <cancelText>Decisão via Central iForYou: ' + txtObs + ' por ' + myUSERName + '</cancelText>' +
+                                '    </ws:cancelInstance>' +
+                                '</soapenv:Body>' +
+                                '</soapenv:Envelope>';
+
+                            // ENVIANDO REQUISICAO PARA ASSUMIR PROCESSO
+                            var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMWorkflowEngineService?wsdl";
+                            var taskProcessCI = new DOMParser();
+                            var xmlTaskProcessCI = taskProcessCI.parseFromString(taskProcess, "text/xml");
+
+                            WCMAPI.Create({
+                                url: wsUrl2,
+                                async: false,
+                                contentType: "text/xml; charset=UTF-8",
+                                dataType: "xml",
+                                data: xmlTaskProcessCI,
+                                error: function(data) {
+                                    // ERRO NA TENTATIVA DE MOVIMENTAR O PROCESSO
+                                    FLUIGC.toast({
+                                        message: 'Não foi possível liberar o processo nº ' + processo + '. ' + JSON.stringify(data),
+                                        type: 'danger'
+                                    });
+                                },
+                                success: function(data) {
+                                    var wsResult = $(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML;
+                                    wsResult = wsResult.rtrim();
+                                    if (wsResult !== 'OK') {
+                                        //xMSG = $(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML;
+                                        //FLUIGC.toast({ message: 'Não foi possível liberar o processo nº '+processo+'. '+xMSG, type: 'danger' });								
+                                        FLUIGC.toast({
+                                            message: 'A tarefa cancelada por outro usuário, favor atualizar a lista!',
+                                            type: 'warning',
+                                            timeout: 3000
+                                        });
+                                    } else {
+                                        $('.regTarefas td button#btnStatus')[xLinha].innerHTML = "CANCELADO";
+                                        $('.regTarefas td#Responsavel')[xLinha].innerHTML = myUSERName;
+                                        myTarefas.getRow(xLinha).Status = "CANCELADO";
+                                        myTarefas.getRow(xLinha).Responsavel = myUSERName;
+
+                                        //-- TEM QUE FAZER DEPOIS DE ATUALIZAR O DATA TABLE
+                                        coresBotoes();
+                                        myModalCanc.remove();
+                                        //myTarefas.reload();
+                                    }
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+        });
+
+    },
+    //BIND de eventos
+    bindings: {
+        local: {},
+        global: {}
+    },
+});
+
+function carregarTarefas() {
+    var myURL;
+    myData = new Array();
+    //VARIAVEIS GERAIS
+    var canceladoSolic = 0;
+    var andamentoSolic = 0;
+    var pendenteSolic = 0;
+    var geralSolic = 0;
+    var finalSolic = 0;
+    var listaProcesso = new Array();
+
+    var page = 1
+    var pageSize = 100
+
+    myURL = SERVER + '/process-management/api/v2/tasks?assignee=' + myUSER + '&page=' + page + '&pageSize=' + pageSize;
+
+    var groupResult = []
+    var groupResultLine = []
+    var distinctProcessId = []
+    var currentProcessId = ''
+
+    console.log('myURL', myURL)
+    
+    FLUIGC.ajax({
+        dataType: 'json',
+        url: myURL,
+        type: 'GET',
+        contentType: 'application/json',
+        async: false,
+        loading: false,
+        success: function(result) {
+            console.log('result 1', result)
+
+            currentProcessId = result.items[0].processInstanceId
+
+            for (var i = 0; i < result.items.length; i++) {
+                // Performance issues
+                if (currentProcessId != result.items[i].processInstanceId) {
+                    currentProcessId = result.items[i].processInstanceId
+                    groupResult.push(groupResultLine)
+                    groupResultLine = []
+                    groupResultLine.push(result.items[i])
+                } else {
+                    groupResultLine.push(result.items[i])
+                }
+
+                var obj = {
+                    PROCESSID: result.items[i].processId,
+                    NRPROCESSO: result.items[i].processInstanceId
+                };
+
+                var search = listaProcesso.filter(function(el) {
+                    if (el['PROCESSID'] == result.items[i].processId &&
+                        el['NRPROCESSO'] == result.items[i].processInstanceId) {
+                        return el;
+                    }
+                });
+
+                if (search.length == 0) {
+                    listaProcesso.push(obj);
+                }
+            }
+            
+            groupResult.push(groupResultLine)
+        },
+        error: function(request, status, error) {
+            FLUIGC.toast({
+                message: 'Não foi possível abrir a consulta de pendências do usuário. Favor acionar o suporte: \n' + error,
+                type: 'warning',
+                timeout: 2000
+            })
+        }
+    });
+
+    console.log('groupResult', groupResult)
+
+    // for (var i = 0; i < 10; i++) {
+    for (var i=0; i< listaProcesso.length; i++){
+        myURL = SERVER + '/process-management/api/v2/processes/' + listaProcesso[i].PROCESSID + '/requests/tasks?processInstanceId=' + listaProcesso[i].NRPROCESSO;
+        FLUIGC.ajax({
+            dataType: 'json',
+            url: myURL,
+            type: 'GET',
+            contentType: 'application/json',
+            async: false,
+            loading: false,
+            success: function(resultProcess) {
+
+                console.log('result 2', resultProcess)
+
+                //-- ORDERNAR A LISTA DE MOVIMENTACOES DO PROCESSO
+                var movimentacaoProcesso = resultProcess.items;
+                movimentacaoProcesso.sort(function(a, b) {
+                    //--
+                    var xValorA = new Date(a.assignStartDate);
+                    //--
+                    var xValorB = new Date(b.assignStartDate);
+                    //--
+                    if (xValorA > xValorB) {
+                        return 1;
+                    } else
+                    if (xValorA < xValorB) {
+                        return -1;
+                    }
+                    // a must be equal to b
+                    return 0;
+                });
+
+                var ultimoReg = movimentacaoProcesso.length - 1;
+                var record = movimentacaoProcesso[ultimoReg];
+
+                var d = new Date(record.startDate);
+                var month = pad((d.getMonth() + 1)),
+                    day = pad(d.getDate()),
+                    year = d.getFullYear(),
+                    hour = pad(d.getHours()),
+                    minutes = pad(d.getMinutes()),
+                    seconds = pad(d.getSeconds());
+
+                var dataAbertura = [day, month, year].join('/');
+                dataAbertura += " " + [hour, minutes, seconds].join(':');
+
+                var dataEncerramento = "";
+                if (record.deadlineDate !== null && record.deadlineDate !== undefined) {
+                    d = new Date(record.deadlineDate);
+                    month = pad((d.getMonth() + 1)),
+                        day = pad(d.getDate()),
+                        year = d.getFullYear(),
+                        hour = pad(d.getHours()),
+                        minutes = pad(d.getMinutes()),
+                        seconds = pad(d.getSeconds());
+
+                    dataEncerramento = [day, month, year].join('/');
+                    dataEncerramento += " " + [hour, minutes, seconds].join(':');
+                }
+
+                var statusProcess = record.status;
+                var atividadeProcess = record.state.stateName;
+
+                switch (statusProcess) {
+                    case "COMPLETED":
+                        statusProcess = "FINALIZADO";
+                        atividadeProcess = "";
+                        break;
+                    case "NOT_COMPLETED":
+                        var xIndex = record.assignee.code.lastIndexOf(":");
+                        if (xIndex !== -1) {
+                            xIndex++;
+                            var xGrupo = record.assignee.code.substring(xIndex);
+                            var search = listaGroup.filter(function(el) {
+                                if (el['GRUPO'] == xGrupo) {
+                                    return el;
+                                }
+                            });
+
+                            if (search && search.length) {
+                                statusProcess = "ASSUMIR TAREFA";
+                            } else {
+                                statusProcess = "FINALIZADO";
+                            }
+                        } else {
+                            statusProcess = "EM ANDAMENTO";
+                        }
+                        break;
+                    case "CANCELED":
+                        statusProcess = "CANCELADO";
+                        atividadeProcess = "";
+                        break;
+                    case "TRANSFERRED":
+                        statusProcess = "ASSUMIR TAREFA";
+                        break;
+                    default:
+                        statusProcess = result.items[i].status;
+                        break;
+                }
+
+                var myURLAttach = SERVER + '/process-management/api/v2/requests/' + record.processInstanceId + '/attachments';
+                var xTemAnexos = true;
+
+                FLUIGC.ajax({
+                    dataType: 'json',
+                    url: myURLAttach,
+                    type: 'GET',
+                    contentType: 'application/json',
+                    async: false,
+                    loading: false,
+                    success: function(result) {
+                        if (result.items.length == 1) {
+                            xTemAnexos = false;
+                        }
+                    },
+                    error: function(request, status, error) {
+
+                    }
+                });
+
+
+                obj = {
+                    Solicitacao: record.processInstanceId,
+                    SolicitacaoSeq: record.movementSequence,
+                    SolicitacaoNome: record.processDescription.replaceAll("_", " "),
+                    Atividade: atividadeProcess,
+                    AtividadeSeq: record.state.sequence,
+                    Solicitante: record.requester.name,
+                    Responsavel: record.assignee.name,
+                    DataAbertura: dataAbertura,
+                    DataEncerramento: dataEncerramento,
+                    Status: statusProcess,
+                    TemAnexos: xTemAnexos
+                };
+
+                var gravaSolicitacao = true,
+                    index = 0;
+                for (var j = 0; j < myData.length; j++) {
+                    var xSolicitacao = myData[j]["Solicitacao"];
+                    if (xSolicitacao === record.processInstanceId) {
+                        gravaSolicitacao = false;
+                        index = j;
+                    }
+                }
+
+                if (gravaSolicitacao == false) {
+                    myData[index] = obj;
+                } else {
+                    myData.push(obj);
+
+                }
+            },
+            error: function(request, status, error) {
+                FLUIGC.toast({
+                    message: 'Não foi possível abrir a consulta de pendências do usuário. Favor acionar o suporte: \n' + error,
+                    type: 'warning',
+                    timeout: 2000
+                })
+            }
+        });
+    }
+
+    for (var i = 0; i < myData.length; i++) {
+        switch (myData[i]["Status"]) {
+            case "FINALIZADO":
+                finalSolic++;
+                break;
+            case "EM ANDAMENTO":
+                andamentoSolic++;
+                break;
+            case "CANCELADO":
+                canceladoSolic++;
+                break;
+            case "ASSUMIR TAREFA":
+                pendenteSolic++;
+                break;
+            default:
+                break;
+        }
+        geralSolic++
+    }
+
+    $('#numAndamento_' + myInstance)[0].innerHTML = andamentoSolic;
+    $('#numPendente_' + myInstance)[0].innerHTML = pendenteSolic;
+    $('#numFinalizada_' + myInstance)[0].innerHTML = finalSolic;
+    $('#numGeral_' + myInstance)[0].innerHTML = geralSolic;
+    $('#numCancelado_' + myInstance)[0].innerHTML = canceladoSolic;
+
+
+    //--CARREGAR MINHAS PENDENCIAS
+    myTarefas = FLUIGC.datatable('#tabMinhasTAREFAS_' + myInstance, {
+        dataRequest: myData,
+        destroy: true, //utilizado para atualizar a tabela
+        emptyMessage: '<div class="text-center" style="color:red;"><b>Nenhuma pendência encontrada até o momento.</b></div>',
+        navButtons: {
+            enabled: false
+        },
+        draggable: {
+            enabled: false
+        },
+        classSelected: 'warning',
+        renderContent: '.tarefas_datatable',
+        tableStyle: 'table-hover',
+        header: [{
+                'title': 'Solicitação',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Nome',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Atividade',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Solicitante',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Responsável',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Abertura',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Encerramento',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Status',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Anexos',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Doc.',
+                'size': 'regTarefasCab'
+            },
+            {
+                'title': 'Cancelar',
+                'size': 'regTarefasCab'
+            }
+        ],
+        search: {
+            enabled: true,
+            onlyEnterkey: true,
+            searchAreaStyle: 'col-md-4 col-xs-12',
+            onSearch: function(res) {
+                myTarefas.reload(tableDataTarefas);
+                var bResult;
+                if (res) {
+                    var data = myTarefas.getData();
+                    var search = data.filter(function(el) {
+                        for (var [key, value] of Object.entries(el)) {
+                            if (typeof value === "string") {
+                                if (value.toUpperCase().indexOf(res.toUpperCase()) >= 0)
+                                    return el;
+                            } else {
+                                if (typeof value === "number") {
+                                    if (value.toString().toUpperCase().indexOf(res.toUpperCase()) >= 0)
+                                        return el;
+                                }
+                            }
+                        }
+                    });
+                    myTarefas.reload(search);
+
+                    if (search && search.length) {
+                        myTarefas.reload(search);
+                        bResult = true;
+                    } else {
+                        bResult = false;
+                    }
+                }
+
+                if (!bResult && res) {
+                    FLUIGC.toast({
+                        title: 'Procurando por ' + res + ': ',
+                        message: 'Não localizado',
+                        type: 'warning'
+                    });
+                }
+            }
+        },
+        actions: {
+            enabled: true,
+            template: '.template_area_buttons',
+            actionAreaStyle: 'col-md-8'
+        },
+        scroll: {
+            target: '#tabMinhasTAREFAS_' + myInstance,
+            enabled: false
+        },
+        reload: function(el, ev) {
+            myTarefas.reload();
+        },
+    }, function(err, data) {
+        if (err) {
+            FLUIGC.toast({
+                message: 'Erro ao tentar carregar o portal. Favor acionar o suporte. \n ' + err,
+                type: 'warning',
+                timeout: 2000
+            });
+        }
+    }).on('click', function(ev) {
+        var xK = event.target.id;
+
+        if (xK === 'btnVerDoc') {
+            var index = myTarefas.selectedRows()[0];
+            var selected = myTarefas.getRow(index);
+            abrirDocumento(selected);
+        } else {
+            if (xK === 'btnVerAnexos') {
+                //-- LISTAR ANEXOS E VISUALIZAR
+                var index = myTarefas.selectedRows()[0];
+                var selected = myTarefas.getRow(index);
+                var qSOLICITACAO = selected.Solicitacao;
+                verAnexos(qSOLICITACAO);
+            } else {
+                if (xK === 'btnStatus') {
+                    var index = myTarefas.selectedRows()[0];
+                    var selected = myTarefas.getRow(index);
+                    if (event.target.innerText == 'ASSUMIR TAREFA') {
+                        assumirTarefa(selected);
+                    } else {
+                        if (event.target.innerText == 'EM ANDAMENTO') {
+                            //andamentoTarefa(selected);
+                            chamaFormulario(selected);
+                        }
+                    }
+                } else {
+                    if (xK === 'btnExcluir') {
+                        if (event.target.className.indexOf('disabled') < 0) {
+                            var index = myTarefas.selectedRows()[0];
+                            var selected = myTarefas.getRow(index);
+                            cancelarTarefa(selected, index);
+                            //andamentoTarefa(selected);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    tableDataTarefas = myTarefas.getData();
+
+    coresBotoes();
+
+    $('#dvCancelado')[0].style.opacity = '.5';
+    $('#dvFinalizdo')[0].style.opacity = '.5';
+    $('#dvPendente')[0].style.opacity = '.5';
+    $('#dvAndamento')[0].style.opacity = '.5';
+    $('#dvGeral')[0].style.opacity = '1';
+}
+
+//ACRESCENTAR O ZERO NO NUMERAL
+function pad(num) {
+    var numRet = num;
+    if (parseInt(num) <= 9) {
+        numRet = "0" + num;
+    }
+    return numRet;
+}
+
+//ABRIR DOCUMENTO
+function abrirDocumento(qselected) {
+    var xSolicitacao = qselected.Solicitacao;
+    var xSolicitacaoSeq = qselected.SolicitacaoSeq;
+
+    var wkConst = DatasetFactory.createConstraint("workflowProcessPK.processInstanceId", xSolicitacao, xSolicitacao, ConstraintType.MUST);
+    var wkResult = DatasetFactory.getDataset("workflowProcess", null, [wkConst], null);
+
+    var xDocumentId = "";
+    var xVersion = "";
+
+    if (wkResult !== undefined && wkResult !== null && wkResult.values.length > 0) {
+        xDocumentId = wkResult.values[0]["cardDocumentId"];
+        var docConst = DatasetFactory.createConstraint("documentPK.documentId", xDocumentId, xDocumentId, ConstraintType.MUST);
+        var docResult = DatasetFactory.getDataset("document", null, [docConst], null);
+        if (docResult !== undefined && docResult !== null && docResult.values.length > 0) {
+            var ultimoReslut = docResult.values.length - 1;
+            xVersion = docResult.values[ultimoReslut]["documentPK.version"];
+        }
+
+    }
+
+    var xcontent = '<iframe id="viewDoc" src="' + WCMAPI.serverURL + '/webdesk/streamcontrol/0/' + xDocumentId + '/' + xVersion + '/" width="100%" height="350px" frameborder="0" style="background:url(http://play.iforyou.com.br/volume/stream/Rmx1aWc=/P3Q9MSZ2b2w9RGVmYXVsdCZpZD0xNjImdmVyPTEwMDAmZmlsZT1CbG9ja3MtbG9hZC1JNFlPVS5naWYmY3JjPTI5MDYxNjA2MDImc2l6ZT0wLjA1Mzg1MSZ1SWQ9NyZmU0lkPTEmdVNJZD0xJmQ9ZmFsc2UmdGtuPSZwdWJsaWNVcmw9ZmFsc2U=.gif) center center no-repeat;"></iframe>';
+    FLUIGC.modal({
+        title: "Visualizar documento",
+        content: xcontent,
+        id: 'fluig-document',
+        size: 'full',
+        actions: [{
+            'label': 'Voltar',
+            'autoClose': true
+        }]
+    }, function(err, data) {
+
+        setTimeout(function() {
+            $('#viewDoc')[0].setAttribute('style', 'background:url()');
+        }, 400);
+
+        if (err) {
+            console.log(err);
+        }
+    });
+}
+
+function verAnexos(qSOLICITACAO) {
+    //-- LISTAR ANEXOS E VISUALIZAR
+    //var index = myTarefas.selectedRows()[0];
+    //var selected = myTarefas.getRow(index);
+    //var qSOLICITACAO = selected.Solicitacao;
+    var qARQUIVOS = [];
+    var processAnexos =
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.workflow.ecm.technology.totvs.com/">' +
+        '<soapenv:Header/>' +
+        '<soapenv:Body>' +
+        '   <ws:getAttachments>' +
+        '         <companyId>' + COMPANY + '</companyId>' +
+        '         <username>' + USER + '</username>' +
+        '         <password>' + PWSD + '</password>' +
+        '         <userId>' + myUSER + '</userId>' +
+        '         <processInstanceId>' + qSOLICITACAO + '</processInstanceId>' +
+        '</ws:getAttachments>' +
+        '</soapenv:Body>' +
+        '</soapenv:Envelope>';
+    //-- ENVIANDO REQUISICAO PARA LOCALIZAR ANEXCOS DA SOLICITACAO
+    var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMWorkflowEngineService?wsdl";
+    var parserprocessoCI = new DOMParser();
+    var xmlRequestprocessoCI = parserprocessoCI.parseFromString(processAnexos, "text/xml");
+    WCMAPI.Create({
+        url: wsUrl2,
+        async: false,
+        contentType: "text/xml; charset=UTF-8",
+        dataType: "xml",
+        data: xmlRequestprocessoCI,
+        error: function(data) {
+            FLUIGC.toast({
+                message: 'Não foi possível verificar os anexos da solicitação nº ' + qSOLICITACAO + '. \n' + JSON.stringify(data),
+                type: 'warning',
+                timeout: 2000
+            })
+        },
+        success: function(data) {
+            var rows = data["children"][0]["children"][0]["children"][0]["children"][0]["children"].length;
+            if (rows == 1) {
+                var xArquivo = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][0]["children"][8].innerHTML;
+                if (xArquivo == "")
+                    FLUIGC.toast({
+                        message: 'Solicitação não possui anexos. \n',
+                        type: 'warning',
+                        timeout: 2000
+                    })
+                else {
+                    var myForm = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][1]["children"][7].innerHTML;
+                    var myVersao = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][1]["children"][14].innerHTML;
+                    var myFile = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][1]["children"][8].innerHTML;
+                    openAttachmentView(myForm, myVersao, myFile);
+                }
+            } else {
+                for (var row = 1; row < rows; row++) {
+                    var xArquivo = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][row]["children"][8].innerHTML;
+                    var xFormulario = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][row]["children"][7].innerHTML;
+                    var xVersao = data["children"][0]["children"][0]["children"][0]["children"][0]["children"][row]["children"][14].innerHTML;
+                    qARQUIVOS.push({
+                        Arquivos: xArquivo,
+                        Formulario: xFormulario,
+                        Versao: xVersao
+                    });
+                }
+                //-- INSERIR RELACAO DE ANEXOS
+                var divConsulta =
+                    '<div class="row" id="meusAnexos">' +
+                    '  <div class="alert alert-success" role="alert" style="text-align:center;font-size:small;"><b>Clique sobre o nome do arquivo para visualizar</b>' +
+                    '  </div> ' +
+                    '  <div class="col-md-12 col-xs-12" id="tabANEXOS">' +
+                    '  </div>' +
+                    '</div>';
+                //--
+                var myModalAnexos = FLUIGC.modal({
+                    title: 'ARQUIVOS ANEXOS',
+                    content: divConsulta,
+                    id: 'fluig-modalAnexos',
+                    size: 'large', //-- 'full | large | small'
+                    actions: [{
+                        'label': 'Fechar',
+                        'autoClose': true
+                    }]
+                }, function(err, data) {
+                    if (err) {
+                        //-- FALHA AO TENTAR CARREGAR ANEXOS 
+                        FLUIGC.toast({
+                            title: 'ATENÇÃO',
+                            message: "Falha ao tentar carregar relação de anexos. MSG: " + err,
+                            type: 'warning',
+                            timeout: 2000
+                        });
+                    } else {
+                        //-- CARREGAR DATATABLE COM RELACAO DE ANEXOS
+                        myTableAnexos = FLUIGC.datatable('#tabANEXOS', {
+                            dataRequest: qARQUIVOS,
+                            emptymessage: '<div class="text-center" style="color:red;"><b>Nenhuma anexo encontrado até o momento.</b></div>',
+                            search: {
+                                enabled: false
+                            },
+                            navButtons: {
+                                enabled: false
+                            },
+                            draggable: {
+                                enabled: false
+                            },
+                            classSelected: 'danger',
+                            renderContent: '.arquivos_Anexos',
+                            header: [{
+                                'title': 'Nome Arquivo'
+                            }],
+                            tableStyle: 'table-hover',
+                            scroll: {
+                                target: '#tabANEXOS',
+                                enabled: true
+                            },
+                        }, function(err, data) {
+                            if (err) {
+                                FLUIGC.toast({
+                                    message: 'Erro ao tentar carregar relação de anexos. ' + err,
+                                    type: 'warning',
+                                    timeout: 2000
+                                });
+                            }
+                        });
+
+                    }
+                });
+                /*
+                 * ON CLICK
+                 */
+                $('#tabANEXOS tbody').on('click', 'tr', function() {
+                    var data = this.cells;
+                    var myForm = this.cells.Formulario.innerText;
+                    var myVersao = this.cells.Versao.innerText;
+                    var myArquivo = this.cells.Arquivos.innerText;
+                    //--
+                    openAttachmentView(myForm, myVersao, myArquivo);
+                });
+            }
+            //-- FIM DOS ANEXOS
+        }
+    });
+}
+
+function assumirTarefa(qselected) {
+    //-- LOCALIZAR DADOS P/MOVIMENTAR PROCESSO
+    var processo = qselected.Solicitacao;
+    atividade = qselected.AtividadeSeq;
+
+    /*
+     * RECUPERAR THREAD DO PROCESSO A SER MOVIMENTADO
+     */
+    var threadProcess =
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.workflow.ecm.technology.totvs.com/"> ' +
+        '   <soapenv:Header/>' +
+        '   <soapenv:Body>' +
+        '      <ws:getActualThread>' +
+        '         <companyId>' + COMPANY + '</companyId>' +
+        '         <username>' + USER + '</username>' +
+        '         <password>' + PWSD + '</password>' +
+        '         <processInstanceId>' + processo + '</processInstanceId>' +
+        '         <stateSequence>' + atividade + '</stateSequence>' +
+        '      </ws:getActualThread>' +
+        '   </soapenv:Body>' +
+        '</soapenv:Envelope>';
+
+    // ENVIANDO REQUISICAO PARA RECUPERAR THREAD
+    var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMWorkflowEngineService?wsdl";
+    var parserprocessoCI = new DOMParser();
+    var xmlRequestprocessoCI = parserprocessoCI.parseFromString(threadProcess, "text/xml");
+
+    var xActualThread = 0;
+
+    WCMAPI.Create({
+        url: wsUrl2,
+        async: false,
+        contentType: "text/xml; charset=UTF-8",
+        dataType: "xml",
+        data: xmlRequestprocessoCI,
+        error: function(data) {
+            // ERRO NA TENTATIVA DE RECUPERAR A THREAD DO PROCESSO
+            FLUIGC.toast({
+                message: 'Não foi possível recuperar a Thread do processo selecionado. \n' + JSON.stringify(data),
+                type: 'danger'
+            })
+        },
+        success: function(data) {
+            if (data.key == 'ERROR') {
+                FLUIGC.toast({
+                    message: 'Erro ao tentar recuperar a Thread do processo nº ' + processo + '. ' + data.content.message,
+                    type: 'danger'
+                })
+            } else {
+                //-- VALOR THREAD				
+                xActualThread = parseInt($(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML);
+
+                // ENVIANDO REQUISICAO PARA ASSUMIR PROCESSO
+                var taskProcess =
+                    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.workflow.ecm.technology.totvs.com/">' +
+                    ' <soapenv:Header/>' +
+                    '  <soapenv:Body>' +
+                    '     <ws:takeProcessTask>' +
+                    '        <companyId>' + COMPANY + '</companyId>' +
+                    '        <username>' + USER + '</username>' +
+                    '        <password>' + PWSD + '</password>' +
+                    '        <userId>' + myUSER + '</userId>' +
+                    '        <processInstanceId>' + processo + '</processInstanceId>' +
+                    '        <threadSequence>' + xActualThread + '</threadSequence>' +
+                    '     </ws:takeProcessTaskByReplacement>' +
+                    '   </soapenv:Body>' +
+                    '</soapenv:Envelope>';
+
+                // ENVIANDO REQUISICAO PARA ASSUMIR PROCESSO
+                var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMWorkflowEngineService?wsdl";
+                var taskProcessCI = new DOMParser();
+                var xmlTaskProcessCI = taskProcessCI.parseFromString(taskProcess, "text/xml");
+
+                WCMAPI.Create({
+                    url: wsUrl2,
+                    async: false,
+                    contentType: "text/xml; charset=UTF-8",
+                    dataType: "xml",
+                    data: xmlTaskProcessCI,
+                    error: function(data) {
+                        // ERRO NA TENTATIVA DE MOVIMENTAR O PROCESSO
+                        FLUIGC.toast({
+                            message: 'Não foi possível liberar o processo nº ' + processo + '. ' + JSON.stringify(data),
+                            type: 'danger'
+                        });
+                    },
+                    success: function(data) {
+                        var wsResult = $(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML;
+                        wsResult = wsResult.rtrim();
+                        if (wsResult !== 'OK') {
+                            //xMSG = $(data)[0]["children"][0]["children"][0]["children"][0]["children"][0].innerHTML;
+                            //FLUIGC.toast({ message: 'Não foi possível liberar o processo nº '+processo+'. '+xMSG, type: 'danger' });								
+                            FLUIGC.toast({
+                                message: 'A tarefa assumida por outro usuário, favor atualizar a lista!',
+                                type: 'warning',
+                                timeout: 3000
+                            });
+                        } else {
+                            $('.regTarefas td button#btnStatus')[index].innerHTML = "EM ANDAMENTO";
+                            $('.regTarefas td#Responsavel')[index].innerHTML = myUSERName;
+                            myTarefas.getRow(index).Status = "EM ANDAMENTO";
+                            myTarefas.getRow(index).Responsavel = myUSERName;
+
+                            //-- TEM QUE FAZER DEPOIS DE ATUALIZAR O DATA TABLE
+                            coresBotoes();
+                            //myTarefas.reload();
+                        }
+                    }
+                });
+            }
+        }
+    });
+}
+
+function cancelarTarefa(qselected, qindex) {
+    //-- LOCALIZAR DADOS P/MOVIMENTAR PROCESSO
+    var processo = qselected.Solicitacao;
+    atividade = qselected.AtividadeSeq;
+
+    //--MONTAR CONSULTA
+    var divConsulta =
+        '<h4 style="text-align: center;">Deseja realmente cancelar esta analise?</h4>';
+
+    //--
+    divConsulta +=
+        '<input type="hidden" id="CancProcesso" name="CancProcesso" value="' + processo + '"/>' +
+        '<input type="hidden" id="CancAtividade" name="CancAtividade" value="' + atividade + '"/>' +
+        '<input type="hidden" id="CancLinha" name="CancLinha" value="' + qindex + '"/>' +
+        '<div class="row">' +
+        '	<div class="col-md-12 col-xs-12" align="center">' +
+        '	</div>' +
+        '</div>' +
+        '<div class="row">' +
+        '	<div class="col-md-12 col-xs-12">' +
+        '       <label>Obs</label>' +
+        '		<textarea name="txtObs" id="txtObs" cols="35" rows="2" width="100%" class="form-control" maxlength="255" placeholder="Preencha a observação..."></textarea>' +
+        '	</div>' +
+        '</div>';
+
+    //--
+    myModalCanc = FLUIGC.modal({
+        title: "Cancelar!",
+        content: divConsulta,
+        id: 'fluig-cancelamento',
+        size: 'large', //--'full | large | small'
+        actions: [{
+            'label': 'Confirmar',
+            'bind': 'data-open-cancelamento'
+        }, {
+            'label': 'Descartar',
+            'autoClose': true
+        }]
+    }, function(err, data) {
+        if (err) {
+            //--FALHA AO TENTAR CARREGAR AVALIACAO
+            FLUIGC.toast({
+                title: 'ATENÇÃO',
+                message: "Falha ao tentar carregar a tela de decisão. MSG: " + err,
+                type: 'warning',
+                timeout: 2000
+            });
+        }
+    });
+}
+
+function openAttachmentView_old(docId, docVersion, fileName) {
+    //-- BASE64 ANEXO	
+    var processAnexos =
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.dm.ecm.technology.totvs.com/">' +
+        '   <soapenv:Header/> ' +
+        '   <soapenv:Body> ' +
+        '      <ws:getDocumentContent> ' +
+        '         <username>' + USER + '</username> ' +
+        '         <password>' + PWSD + '</password> ' +
+        '         <companyId>' + COMPANY + '</companyId> ' +
+        '         <documentId>' + docId + '</documentId> ' +
+        '         <colleagueId>' + myUSER + '</colleagueId> ' +
+        '         <documentoVersao>' + docVersion + '</documentoVersao> ' +
+        '         <nomeArquivo>' + fileName + '</nomeArquivo> ' +
+        '      </ws:getDocumentContent> ' +
+        '   </soapenv:Body> ' +
+        '</soapenv:Envelope> ';
+
+    //-- ENVIANDO REQUISICAO PARA LOCALIZAR ANEXCOS DA SOLICITACAO
+    var wsUrl2 = WCMAPI.serverURL + "/webdesk/ECMDocumentService?wsdl";
+    var parserprocessoCI = new DOMParser();
+    var xmlRequestprocessoCI = parserprocessoCI.parseFromString(processAnexos, "text/xml");
+    WCMAPI.Create({
+        url: wsUrl2,
+        async: false,
+        contentType: "text/xml; charset=UTF-8",
+        dataType: "xml",
+        data: xmlRequestprocessoCI,
+        error: function(data) {
+            FLUIGC.toast({
+                message: $(data)[0].responseXML.getElementsByTagName('faultstring')[0].innerHTML,
+                type: 'warning',
+                timeout: 2000
+            })
+        },
+        success: function(data) {
+            var constArray = new Array();
+            constArray.push(DatasetFactory.createConstraint("documentPK.documentId", docId, docId, ConstraintType.MUST));
+            constArray.push(DatasetFactory.createConstraint("documentPK.version", docVersion, docVersion, ConstraintType.MUST));
+            var datasetDoc = DatasetFactory.getDataset("document", null, constArray, null);
+            var xMimeType = datasetDoc.values[0]["mimetype"];
+            var fileBase64 = data.getElementsByTagName('folder')[0].innerHTML;
+            var blob = converBase64toBlob(fileBase64, xMimeType);
+            var extensao = fileName.substring(fileName.lastIndexOf('.') + 1);
+            var blobURL = URL.createObjectURL(blob);
+            //	blobURL     = blobURL.replace('blob:','');
+            window.open('https://docs.google.com/viewerng/viewer?url=' + blobURL);
+            //--window.open(blobURL);
+        }
+    });
+}
+
+function openAttachmentView(docId, docVersion, fileName) {
+    //SE FORM IMAGEM OU GIF ABRE O ANEXO NO PROCESSO PADRÃO
+    if (/\.(jpe?g|png|gif)$/i.test(fileName)) {
+        //-- /stream/documentview
+        var myURL = WCMAPI.serverURL + "/ecm_documentview/documentView.ftl";
+        ECM.documentView = {};
+        var cfg = {
+            url: myURL,
+            width: 750,
+            height: 500,
+            maximized: true,
+            showbtclose: false,
+            title: "Processando...",
+            callBack: function() {
+                ECM.documentView.getDocument(docId, docVersion);
+            },
+            customButtons: []
+        };
+
+        ECM.documentView.panel = WCMC.panel(cfg);
+        $('#ecm-documentview-toolbar').hide();
+
+        ECM.documentView.panel.bind("panel-close", function() {
+            ECM.documentView.hideIFrame();
+            if (ECM.documentView.toUndefined == undefined || ECM.documentView.toUndefined) {
+                ECM.documentView = undefined;
+            }
+        });
+    } else {
+        var xARQ = WCMAPI.serverURL + "/api/public/2.0/documents/getDownloadURL/" + docId;
+        WCMAPI.Create({
+            async: false,
+            dataType: 'json',
+            url: xARQ,
+            type: 'GET',
+            contenttype: 'application/json',
+            success: function(data) {
+                //window.open('https://docs.google.com/viewerng/viewer?url='+data.content);
+                var divConsulta =
+                    '<div class="col-lg-12 col-md-12 col-xs-12 col-sm-12" id="windowAnexo">' +
+                    '	<iframe class="col-lg-12 col-md-12 col-xs-12 col-sm-12" src="https://docs.google.com/viewerng/viewer?url=' + data.content + '&embedded=true" frameborder="0" style="padding: 0px; margin: 0px;" width="100%" height="100%" allowfullscreen></iframe>' +
+                    '</div>';
+
+                //--
+                myModalShowAnexos = FLUIGC.modal({
+                    title: fileName,
+                    content: divConsulta,
+                    id: 'fluig-showAnexos',
+                    size: 'full' //--'full | large | small'
+                    /*actions:[{'label': 'Fechar',
+                    	      'autoClose': true
+                           }]*/
+                }, function(err, data) {
+                    if (err) {
+                        //--FALHA AO TENTAR CARREGAR AVALIACAO
+                        FLUIGC.toast({
+                            title: 'ATENÇÃO',
+                            message: "Falha ao tentar carregar o anexo. MSG: " + err,
+                            type: 'warning',
+                            timeout: 2000
+                        });
+                    }
+                });
+
+                $('#fluig-showAnexos')[0].style.width = window.innerWidth - 50 + 'px';
+                $('#fluig-showAnexos')[0].style.height = window.innerHeight - 50 + 'px';
+                $("#fluig-showAnexos .modal-content")[0].style.height = window.innerHeight - 50 + 'px';
+                $("#fluig-showAnexos .modal-content .modal-body")[0].style.height = window.innerHeight - 50 + 'px';
+                $("#fluig-showAnexos .modal-content .modal-body")[0].style.maxHeight = window.innerHeight - 50 + 'px';
+                $("#fluig-showAnexos .modal-content #windowAnexo")[0].style.height = window.innerHeight - 100 + 'px';
+
+            },
+            error: function(request, status, error) {
+                FLUIGC.toast({
+                    message: 'Não foi possível localizar o anexo ' + xFormulario + ' \n' + error,
+                    type: 'danger'
+                });
+            }
+        });
+    }
+}
+
+function converBase64toBlob(content, contentType) {
+    contentType = contentType || '';
+    var sliceSize = 512;
+    var byteCharacters = window.atob(content); //method which converts base64 to binary
+    var byteArrays = [];
+    for (var offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+        var slice = byteCharacters.slice(offset, offset + sliceSize);
+        var byteNumbers = new Array(slice.length);
+        for (var i = 0; i < slice.length; i++) {
+            byteNumbers[i] = slice.charCodeAt(i);
+        }
+        var byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+    }
+    var blob = new Blob(byteArrays, {
+        type: contentType
+    }); //statement which creates the blob
+    return blob;
+}
+
+function coresBotoes() {
+    //DESABILITA BOTOES QUE ESTAO EM ANDAMENTO
+    for (var i = 0; i < $('.regTarefas td button').length; i++) {
+        if ($('.regTarefas td button')[i].innerHTML === "EM ANDAMENTO") {
+            //$('.regTarefas td button')[i].disabled = true;
+            $('.regTarefas td button')[i].setAttribute('class', 'btn btn-success btnStatus');
+            $('.regTarefas td button')[i].setAttribute('style', 'font-size: smaller;border: none !important;');
+        }
+
+        if ($('.regTarefas td button')[i].innerHTML === "ASSUMIR TAREFA") {
+            //$('.regTarefas td button')[i].disabled = true;
+            $('.regTarefas td button')[i].setAttribute('class', 'btn btn-info btnStatus');
+            $('.regTarefas td button')[i].setAttribute('style', 'font-size: smaller;border: none !important;');
+        }
+
+        if ($('.regTarefas td button')[i].innerHTML === "FINALIZADO") {
+            //$('.regTarefas td button')[i].disabled = true;
+            $('.regTarefas td button')[i].setAttribute('class', 'btn btnStatus');
+            $('.regTarefas td button')[i].setAttribute('style', 'color: white !important;font-size: smaller;border: none !important;background-color:#e64141;');
+            //#btnExcluir
+            $('.regTarefas td button')[i + 3].setAttribute('style', 'background-color:darkgray');
+            $('.regTarefas td button')[i + 3].setAttribute('class', 'btn btn-yellow btnExcluir disabled');
+            $('.regTarefas td button')[i + 3].children[0].className = "fluigicon fluigicon-trash icon-sm disabled";
+        }
+
+        if ($('.regTarefas td button')[i].innerHTML === "CANCELADO") {
+            //$('.regTarefas td button')[i].disabled = true;
+            $('.regTarefas td button')[i].setAttribute('class', 'btn btn-warning btnStatus');
+            $('.regTarefas td button')[i].setAttribute('style', 'font-size: smaller;border: none !important;');
+            //#btnExcluir
+            $('.regTarefas td button')[i + 3].setAttribute('style', 'background-color:darkgray');
+            $('.regTarefas td button')[i + 3].setAttribute('class', 'btn btn-yellow btnExcluir disabled');
+            $('.regTarefas td button')[i + 3].children[0].className = "fluigicon fluigicon-trash icon-sm disabled";
+        }
+    }
+
+    for (var i = 0; i < $('.regTarefas td#TemAnexos').length; i++) {
+        if ($('.regTarefas td#TemAnexos')[i].innerHTML === "false") {
+            $('.regTarefas td button#btnVerAnexos')[i].setAttribute('style', 'background-color:darkgray');
+        }
+    }
+
+    ajustaCSSbtnStatus();
+}
+
+function andamentoTarefa(qselected) {
+
+    var qSOLICITACAO = qselected.Solicitacao;
+    var qSOLICITACAOSeq = qselected.SolicitacaoSeq;
+
+    // MONTAR O LINK DE ACESSO A
+    // SOLICITACAO
+    var link = WCMAPI.serverURL;
+    link += '/portal/p/' + WCMAPI.organizationId;
+    link += '/pageworkflowview?app_ecm_workflowview_processInstanceId=' + qSOLICITACAO;
+
+    // POSICAO ATUAL DA SOLICITACAO
+    link += '&app_ecm_workflowview_currentMovto=' + qSOLICITACAOSeq;
+    link += '&app_ecm_workflowview_managerMode=false';
+
+    // NOVA ABA - ABRIR O PROCESSO
+    window.open(link);
+}
+
+function filtrosRegua(qFiltro) {
+
+    myTarefas.reload(tableDataTarefas);
+    var search;
+    switch (qFiltro) {
+        case 'EM ANDAMENTO':
+            $('#dvCancelado')[0].style.opacity = '.5';
+            $('#dvFinalizdo')[0].style.opacity = '.5';
+            $('#dvPendente')[0].style.opacity = '.5';
+            $('#dvAndamento')[0].style.opacity = '1';
+            $('#dvGeral')[0].style.opacity = '.5';
+
+            var data = myTarefas.getData();
+            search = data.filter(function(el) {
+                if (el['Status'] == qFiltro) {
+                    return el;
+                }
+            });
+            break;
+        case 'ASSUMIR TAREFA':
+            $('#dvCancelado')[0].style.opacity = '.5';
+            $('#dvFinalizdo')[0].style.opacity = '.5';
+            $('#dvPendente')[0].style.opacity = '1';
+            $('#dvAndamento')[0].style.opacity = '.5';
+            $('#dvGeral')[0].style.opacity = '.5';
+
+            var data = myTarefas.getData();
+            search = data.filter(function(el) {
+                if (el['Status'] == qFiltro) {
+                    return el;
+                }
+            });
+            break;
+        case 'CANCELADO':
+            $('#dvCancelado')[0].style.opacity = '1';
+            $('#dvFinalizdo')[0].style.opacity = '.5';
+            $('#dvPendente')[0].style.opacity = '.5';
+            $('#dvAndamento')[0].style.opacity = '.5';
+            $('#dvGeral')[0].style.opacity = '.5';
+
+            var data = myTarefas.getData();
+            search = data.filter(function(el) {
+                if (el['Status'] == qFiltro) {
+                    return el;
+                }
+            });
+            break;
+        case 'FINALIZADO':
+            $('#dvCancelado')[0].style.opacity = '.5';
+            $('#dvFinalizdo')[0].style.opacity = '1';
+            $('#dvPendente')[0].style.opacity = '.5';
+            $('#dvAndamento')[0].style.opacity = '.5';
+            $('#dvGeral')[0].style.opacity = '.5';
+
+            var data = myTarefas.getData();
+            search = data.filter(function(el) {
+                if (el['Status'] == qFiltro) {
+                    return el;
+                }
+            });
+            break;
+        default:
+            $('#dvCancelado')[0].style.opacity = '.5';
+            $('#dvFinalizdo')[0].style.opacity = '.5';
+            $('#dvPendente')[0].style.opacity = '.5';
+            $('#dvAndamento')[0].style.opacity = '.5';
+            $('#dvGeral')[0].style.opacity = '1';
+
+            search = myTarefas.getData();
+            break;
+    }
+
+    myTarefas.reload(search);
+
+    if (search && search.length) {
+        myTarefas.reload(search);
+    } else {
+        FLUIGC.toast({
+            title: 'Procurando por ' + qFiltro,
+            message: 'Não localizado',
+            type: 'warning'
+        });
+    }
+
+    coresBotoes();
+    topFORM();
+
+}
+
+function chamaFormulario(qselected) {
+
+    var qSOLICITACAO = qselected.Solicitacao;
+    var qSOLICITACAOSeq = qselected.SolicitacaoSeq;
+    var qAtividadeSeq = qselected.AtividadeSeq;
+    var nyURL;
+    // myURL = SERVER + '/portal/p/' + WCMAPI.organizationId + '/iForYou_Formulario/' + qSOLICITACAO + '/' + qSOLICITACAOSeq + '/' + qAtividadeSeq;
+    myURL = SERVER + '/portal/p/' + WCMAPI.organizationId + '/pageworkflowview?app_ecm_workflowview_detailsProcessInstanceID=' + qSOLICITACAO
+
+    // NOVA ABA - ABRIR O PROCESSO
+    window.open(myURL);
+
+}
+
+function ajustaCSSbtnStatus() {
+    var xTamBtn = 0;
+    var qbtnStatus = document.getElementsByClassName('btnStatus').length;
+    if (qbtnStatus > 1) {
+        for (var index1 = 0; index1 < qbtnStatus; index1++) {
+            if (xTamBtn == 0) {
+                xTamBtn = document.getElementsByClassName('btnStatus')[index1].offsetWidth;
+            } else {
+                if (xTamBtn < document.getElementsByClassName('btnStatus')[index1].offsetWidth) {
+                    xTamBtn = document.getElementsByClassName('btnStatus')[index1].offsetWidth;
+                }
+            }
+        }
+
+        if (xTamBtn > 0)
+            for (var index1 = 0; index1 < qbtnStatus; index1++) {
+                //document.getElementsByClassName('cardsPanelComp')[index1].setAttribute('style', 'height: '+xTamBtn+'px;');
+                document.getElementsByClassName('btnStatus')[index1].style.width = xTamBtn + 'px';
+            }
+    }
+}
