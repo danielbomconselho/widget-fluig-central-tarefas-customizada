@@ -4,6 +4,7 @@ var Central_de_tarefas = SuperWidget.extend({
     requests: [],
     filters: null,            // Inicializado em init() para evitar compartilhamento entre instâncias
     colleagueMap: null,       // Idem
+    categoryLabelMap: null,
     currentStatus: null,
     currentProcess: null,
     carouselIndex: 0,
@@ -104,6 +105,7 @@ var Central_de_tarefas = SuperWidget.extend({
         // Estado por instância (objetos não podem ficar no protótipo)
         instance.filters = { solicitante: 'all', responsavel: 'all', categoria: 'all' };
         instance.colleagueMap = {};
+        instance.categoryLabelMap = {};
         instance._processStateCache = {};
 
         // Hide containers initially
@@ -240,6 +242,98 @@ var Central_de_tarefas = SuperWidget.extend({
         if (WCMAPI.getUserCode) return WCMAPI.getUserCode();
         if (WCMAPI.user) return WCMAPI.user;
         return null;
+    },
+
+    getCurrentLanguage: function() {
+        if (typeof WCMAPI !== 'undefined') {
+            if (WCMAPI.locale) return WCMAPI.locale;
+            if (WCMAPI.getLocale) return WCMAPI.getLocale();
+            if (WCMAPI.language) return WCMAPI.language;
+        }
+        if (typeof navigator !== 'undefined') {
+            return navigator.language || navigator.userLanguage || 'pt-BR';
+        }
+        return 'pt-BR';
+    },
+
+    getTranslatedProcessLabel: function(processId, fallback) {
+        var instance = this;
+        if (!processId || typeof DatasetFactory === 'undefined') return fallback;
+
+        try {
+            var idioma = instance.getCurrentLanguage();
+            var normalizedIdioma = String(idioma || '').replace('_', '-').toLowerCase();
+            var constraints = [
+                DatasetFactory.createConstraint("PROCESSID", processId, processId, ConstraintType.MUST),
+                DatasetFactory.createConstraint("IDIOMA", idioma, idioma, ConstraintType.MUST)
+            ];
+            instance._perfCount('dataset.ds_traducao_dos_processos');
+            var ds = DatasetFactory.getDataset("ds_traducao_dos_processos", null, constraints, null);
+            if (!ds || !ds.values || ds.values.length === 0) return fallback;
+
+            var row = ds.values[0];
+            for (var i = 0; i < ds.values.length; i++) {
+                var candidate = ds.values[i];
+                var rowIdioma = candidate.IDIOMA
+                    || candidate.idioma
+                    || candidate.LANGUAGE
+                    || candidate.language
+                    || candidate.LOCALE
+                    || candidate.locale
+                    || candidate.LANG
+                    || candidate.lang;
+                if (rowIdioma && String(rowIdioma).replace('_', '-').toLowerCase() === normalizedIdioma) {
+                    row = candidate;
+                    break;
+                }
+            }
+
+            return instance.getTranslatedProcessText(row, fallback);
+        } catch (e) {
+            console.warn('[CentralTarefas] Falha ao traduzir processo ' + processId + ':', e);
+            return fallback;
+        }
+    },
+
+    getTranslatedProcessText: function(row, fallback) {
+        if (!row) return fallback;
+
+        var preferredFields = [
+            'CATEGORY_DESCRIPTION',
+            'categoryDescription',
+            'CATEGORY',
+            'category',
+            'CATEGORIA',
+            'categoria',
+            'PROCESS_DESCRIPTION',
+            'processDescription',
+            'PROCESSDESCRIPTION',
+            'DESCRIPTION',
+            'description',
+            'DESCRICAO',
+            'descricao',
+            'NOME',
+            'nome'
+        ];
+        for (var i = 0; i < preferredFields.length; i++) {
+            var value = row[preferredFields[i]];
+            if (value && value !== 'null') return value;
+        }
+
+        for (var key in row) {
+            if (row.hasOwnProperty(key)) {
+                var lowerKey = String(key).toLowerCase();
+                var ignored = lowerKey.indexOf('process') !== -1
+                    || lowerKey.indexOf('vers') !== -1
+                    || lowerKey.indexOf('idioma') !== -1
+                    || lowerKey.indexOf('language') !== -1
+                    || lowerKey.indexOf('locale') !== -1
+                    || lowerKey === 'lang';
+                if (!ignored && row[key] && row[key] !== 'null') return row[key];
+            }
+        }
+
+        return fallback;
     },
 
     // Busca assíncrona as tarefas ativas de uma solicitação via REST.
@@ -456,7 +550,7 @@ var Central_de_tarefas = SuperWidget.extend({
                             // Dataset retorna "null" como string para valores nulos do SQL
                             if (aid === 'null' || aid === undefined) aid = null;
                             activeTaskMap[task.NUM_PROCES].push({
-                        activityDescription: task.DES_ESTADO || this._format(this._t('central.tarefas.processo.atividade'), [task.NUM_SEQ_ESTADO]),
+                                activityDescription: task.DES_ESTADO || this._format(this._t('central.tarefas.processo.atividade'), [task.NUM_SEQ_ESTADO]),
                                 deadline: task.DEADLINE,
                                 assigneeId: aid
                             });
@@ -464,22 +558,7 @@ var Central_de_tarefas = SuperWidget.extend({
                     }
                 }
 
-                // Process definition dataset to get cleaner process names
-                this._perfCount('dataset.processDefinition');
-                var dsDef = DatasetFactory.getDataset("processDefinition", null, null, null);
-                var processNames = {};
-                var categoryNames = {};
-                if (dsDef && dsDef.values) {
-                    for (var k = 0; k < dsDef.values.length; k++) {
-                        var def = dsDef.values[k];
-                        processNames[def["processDefinitionPK.processId"]] = def.processDescription;
-                        categoryNames[def["processDefinitionPK.processId"]] = def.categoryId;
-                    }
-                }
-
-                // Reduz dsWorkflow.values aos itens do usuário ANTES de buildDescriptorMap.
-                // Isso encolhe drasticamente o N+1 do dataset 'document', porque só pedimos
-                // descriptor para solicitações que de fato serão exibidas.
+                // Reduz aos itens do usuário antes das consultas auxiliares.
                 var workflowValues = dsWorkflow.values;
                 if (loggedUser) {
                     workflowValues = dsWorkflow.values.filter(function(w) {
@@ -489,7 +568,36 @@ var Central_de_tarefas = SuperWidget.extend({
                         return hasUserTask || isUserRequester;
                     });
                 }
+                var visibleProcessIds = {};
+                workflowValues.forEach(function(w) {
+                    if (w.processId) visibleProcessIds[w.processId] = true;
+                });
 
+                // Process definition dataset to get cleaner process names
+                this._perfCount('dataset.processDefinition');
+                var dsDef = DatasetFactory.getDataset("processDefinition", null, null, null);
+                var processNames = {};
+                var categoryNames = {};
+                var categoryLabels = {};
+                if (dsDef && dsDef.values) {
+                    for (var k = 0; k < dsDef.values.length; k++) {
+                        var def = dsDef.values[k];
+                        var defProcessId = def["processDefinitionPK.processId"];
+                        if (!visibleProcessIds[defProcessId]) continue;
+                        var defProcessName = def.processDescription;
+                        var defCategoryId = def.categoryId;
+                        processNames[defProcessId] = defProcessName;
+                        categoryNames[defProcessId] = defCategoryId;
+                        if (defCategoryId && defCategoryId !== 'null' && !categoryLabels[defCategoryId]) {
+                            categoryLabels[defCategoryId] = this.getTranslatedProcessLabel(defProcessId, defProcessName || defCategoryId);
+                        }
+                    }
+                }
+                this.categoryLabelMap = categoryLabels;
+
+                // Reduz dsWorkflow.values aos itens do usuário ANTES de buildDescriptorMap.
+                // Isso encolhe drasticamente o N+1 do dataset 'document', porque só pedimos
+                // descriptor para solicitações que de fato serão exibidas.
                 // Mapa cardDocumentId → descriptor textual do registro de formulário.
                 // Prioridade do texto: documentDescription → cardDescription.
                 // Seleção de versão: activeVersion === true; fallback = maior documentPK.version.
@@ -583,6 +691,7 @@ var Central_de_tarefas = SuperWidget.extend({
                         status: status,
                         currentActivity: currentActivity,
                         categoryId: categoryId,
+                        categoryLabel: categoryId ? (categoryLabels[categoryId] || categoryId) : null,
                         assigneeIds: assigneeIds,
                         cardDocumentId: cardDocumentId,
                         descriptor: descriptorText,
@@ -860,20 +969,24 @@ var Central_de_tarefas = SuperWidget.extend({
         var hasNoneCategory = false;
         instance.requests.forEach(function(r) {
             if (r.categoryId) {
-                categorias[r.categoryId] = true;
+                if (!categorias[r.categoryId]) {
+                    categorias[r.categoryId] = r.categoryLabel || instance.categoryLabelMap[r.categoryId] || r.categoryId;
+                }
             } else {
                 hasNoneCategory = true;
             }
         });
-        var categoriasArr = Object.keys(categorias).sort(function(a, b) {
-            return a.localeCompare(b, 'pt-BR');
+        var categoriasArr = Object.keys(categorias).map(function(id) {
+            return { id: id, label: categorias[id] };
+        }).sort(function(a, b) {
+            return a.label.localeCompare(b.label, 'pt-BR');
         });
 
         var $catSelect = root.find('#filter-categoria-' + instance.instanceId);
         $catSelect.empty();
         $catSelect.append('<option value="all">' + instance.escapeHtml(instance._t('central.tarefas.filtro.todas')) + '</option>');
         categoriasArr.forEach(function(c) {
-            $catSelect.append('<option value="' + instance.escapeHtml(c) + '">' + instance.escapeHtml(c) + '</option>');
+            $catSelect.append('<option value="' + instance.escapeHtml(c.id) + '">' + instance.escapeHtml(c.label) + '</option>');
         });
         if (hasNoneCategory) {
             $catSelect.append('<option value="__none__">' + instance.escapeHtml(instance._t('central.tarefas.filtro.sem.categoria')) + '</option>');
@@ -1019,7 +1132,9 @@ var Central_de_tarefas = SuperWidget.extend({
         }
         if (instance.filters.categoria !== 'all') {
             var catValue = instance.filters.categoria;
-            var catLabel = catValue === '__none__' ? instance._t('central.tarefas.filtro.sem.categoria') : catValue;
+            var catLabel = catValue === '__none__'
+                ? instance._t('central.tarefas.filtro.sem.categoria')
+                : (instance.categoryLabelMap[catValue] || catValue);
             chips.push({
                 key: 'categoria',
                 label: instance._t('central.tarefas.filtro.categoria'),
