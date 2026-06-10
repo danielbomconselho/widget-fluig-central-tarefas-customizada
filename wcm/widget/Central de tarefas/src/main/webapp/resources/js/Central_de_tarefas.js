@@ -5,6 +5,7 @@ var Central_de_tarefas = SuperWidget.extend({
     filters: null,            // Inicializado em init() para evitar compartilhamento entre instâncias
     colleagueMap: null,       // Idem
     categoryLabelMap: null,
+    processLabelMap: null,
     currentStatus: null,
     currentProcess: null,
     carouselIndex: 0,
@@ -61,6 +62,14 @@ var Central_de_tarefas = SuperWidget.extend({
         });
     },
 
+    normalizeActivityName: function(value) {
+        var normalized = String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+        if (normalized.normalize) {
+            normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        }
+        return normalized;
+    },
+
     _getStatusLabels: function(variant) {
         return {
             andamento: this._t('central.tarefas.status.andamento'),
@@ -106,6 +115,7 @@ var Central_de_tarefas = SuperWidget.extend({
         instance.filters = { solicitante: 'all', responsavel: 'all', categoria: 'all' };
         instance.colleagueMap = {};
         instance.categoryLabelMap = {};
+        instance.processLabelMap = {};
         instance._processStateCache = {};
 
         // Hide containers initially
@@ -288,52 +298,56 @@ var Central_de_tarefas = SuperWidget.extend({
                 }
             }
 
-            return instance.getTranslatedProcessText(row, fallback);
+            return row.DESCRIPTION && row.DESCRIPTION !== 'null'
+                ? row.DESCRIPTION
+                : fallback;
         } catch (e) {
             console.warn('[CentralTarefas] Falha ao traduzir processo ' + processId + ':', e);
             return fallback;
         }
     },
 
-    getTranslatedProcessText: function(row, fallback) {
-        if (!row) return fallback;
+    getProcessDisplayName: function(processId, rawName) {
+        var instance = this;
+        var fallback = rawName || processId || '';
 
-        var preferredFields = [
-            'CATEGORY_DESCRIPTION',
-            'categoryDescription',
-            'CATEGORY',
-            'category',
-            'CATEGORIA',
-            'categoria',
-            'PROCESS_DESCRIPTION',
-            'processDescription',
-            'PROCESSDESCRIPTION',
-            'DESCRIPTION',
-            'description',
-            'DESCRICAO',
-            'descricao',
-            'NOME',
-            'nome'
+        if (!instance.processLabelMap) {
+            instance.processLabelMap = {};
+        }
+        if (instance.processLabelMap.hasOwnProperty(processId)) {
+            return instance.processLabelMap[processId];
+        }
+
+        var translated = instance.getTranslatedProcessLabel(processId, fallback);
+        var displayName = String(translated || fallback).replace(/_/g, " ");
+        instance.processLabelMap[processId] = displayName;
+        return displayName;
+    },
+
+    getCardDisplayDescription: function(req) {
+        var instance = this;
+        var rawProcessName = String(req.processName || req.processId || '');
+        var displayProcessName = instance.getProcessDisplayName(req.processId, rawProcessName);
+        var descriptor = String(req.descriptor || '');
+
+        if (!descriptor) {
+            return instance._format(
+                instance._t('central.tarefas.solicitacao.descricao'),
+                [displayProcessName]
+            );
+        }
+
+        var rawVariants = [
+            rawProcessName,
+            rawProcessName.replace(/_/g, ' ')
         ];
-        for (var i = 0; i < preferredFields.length; i++) {
-            var value = row[preferredFields[i]];
-            if (value && value !== 'null') return value;
-        }
+        rawVariants.forEach(function(rawVariant) {
+            if (!rawVariant || rawVariant === displayProcessName) return;
+            var escaped = rawVariant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            descriptor = descriptor.replace(new RegExp(escaped, 'gi'), displayProcessName);
+        });
 
-        for (var key in row) {
-            if (row.hasOwnProperty(key)) {
-                var lowerKey = String(key).toLowerCase();
-                var ignored = lowerKey.indexOf('process') !== -1
-                    || lowerKey.indexOf('vers') !== -1
-                    || lowerKey.indexOf('idioma') !== -1
-                    || lowerKey.indexOf('language') !== -1
-                    || lowerKey.indexOf('locale') !== -1
-                    || lowerKey === 'lang';
-                if (!ignored && row[key] && row[key] !== 'null') return row[key];
-            }
-        }
-
-        return fallback;
+        return descriptor;
     },
 
     // Busca assíncrona as tarefas ativas de uma solicitação via REST.
@@ -551,6 +565,7 @@ var Central_de_tarefas = SuperWidget.extend({
                             if (aid === 'null' || aid === undefined) aid = null;
                             activeTaskMap[task.NUM_PROCES].push({
                                 activityDescription: task.DES_ESTADO || this._format(this._t('central.tarefas.processo.atividade'), [task.NUM_SEQ_ESTADO]),
+                                activitySequence: String(task.NUM_SEQ_ESTADO || ''),
                                 deadline: task.DEADLINE,
                                 assigneeId: aid
                             });
@@ -589,7 +604,7 @@ var Central_de_tarefas = SuperWidget.extend({
                         processNames[defProcessId] = defProcessName;
                         categoryNames[defProcessId] = defCategoryId;
                         if (defCategoryId && defCategoryId !== 'null' && !categoryLabels[defCategoryId]) {
-                            categoryLabels[defCategoryId] = this.getTranslatedProcessLabel(defProcessId, defProcessName || defCategoryId);
+                            categoryLabels[defCategoryId] = String(defCategoryId).replace(/_/g, " ");
                         }
                     }
                 }
@@ -608,9 +623,8 @@ var Central_de_tarefas = SuperWidget.extend({
                     var instanceId = w.processInstanceId || w["workflowProcessPK.processInstanceId"];
                     var procId = w.processId;
 
-                    // Format process name nicely
+                    // Mantém o nome bruto do dataset. Tradução/formatação ocorre apenas na exibição.
                     var procName = processNames[procId] || w.processDescription || procId;
-                    procName = procName.replace(/_/g, " ");
                     var categoryId = categoryNames[procId];
                     if (categoryId === 'null' || categoryId === undefined) categoryId = null;
 
@@ -635,9 +649,11 @@ var Central_de_tarefas = SuperWidget.extend({
                     var currentTasks = activeTaskMap[instanceId] || [];
                     var currentTask = currentTasks[0]; // Tarefa principal para exibição
                     var currentActivity = this._t('central.tarefas.processo.finalizado');
+                    var currentActivitySequence = '';
                     var status = "concluidas";
                     if (active) {
                         currentActivity = currentTask ? currentTask.activityDescription : this._t('central.tarefas.processo.inicio');
+                        currentActivitySequence = currentTask ? currentTask.activitySequence : '';
                         // Processo está atrasado se QUALQUER tarefa ativa estiver vencida
                         var isDelayed = false;
                         var hasMoment = typeof moment !== 'undefined';
@@ -690,6 +706,7 @@ var Central_de_tarefas = SuperWidget.extend({
                         date: dateStr,
                         status: status,
                         currentActivity: currentActivity,
+                        currentActivitySequence: currentActivitySequence,
                         categoryId: categoryId,
                         categoryLabel: categoryId ? (categoryLabels[categoryId] || categoryId) : null,
                         assigneeIds: assigneeIds,
@@ -1327,10 +1344,11 @@ var Central_de_tarefas = SuperWidget.extend({
         }
 
         processes.forEach(function(proc) {
+            var processDisplayName = instance.getProcessDisplayName(proc.id, proc.name);
             var cardHtml =
                 '<div class="process-card" data-process-id="' + instance.escapeHtml(proc.id) + '">' +
                     '<div class="process-card-header">' +
-                        '<span class="process-name" title="' + instance.escapeHtml(proc.name) + '">' + instance.escapeHtml(proc.name) + '</span>' +
+                        '<span class="process-name" title="' + instance.escapeHtml(processDisplayName) + '">' + instance.escapeHtml(processDisplayName) + '</span>' +
                         '<span class="process-count-badge">' + proc.count + '</span>' +
                     '</div>' +
                 '</div>';
@@ -1368,7 +1386,10 @@ var Central_de_tarefas = SuperWidget.extend({
         var baseRequests = instance.getFilteredRequests();
         var processCard = baseRequests.find(function(r) { return r.processId === processId; })
                        || instance.requests.find(function(r) { return r.processId === processId; });
-        var processName = processCard ? processCard.processName : processId;
+        var processName = instance.getProcessDisplayName(
+            processId,
+            processCard ? processCard.processName : processId
+        );
 
         $('#selected-process-label-' + instance.instanceId).text(processName);
 
@@ -1422,10 +1443,13 @@ var Central_de_tarefas = SuperWidget.extend({
                         var seq = parseInt(row["processStatePK.sequence"] || row.sequence || 0);
 
                         if (desc && desc.trim() !== "" && seq > 0) {
-                            var normalizedDesc = desc.trim().toUpperCase();
-                            if (!seen[normalizedDesc]) {
-                                seen[normalizedDesc] = true;
-                                activities.push(desc.trim());
+                            var activitySequence = String(seq);
+                            if (!seen[activitySequence]) {
+                                seen[activitySequence] = true;
+                                activities.push({
+                                    sequence: activitySequence,
+                                    name: desc.trim()
+                                });
                             }
                         }
                     });
@@ -1450,10 +1474,15 @@ var Central_de_tarefas = SuperWidget.extend({
             var seenFallback = {};
             allProcessRequests.forEach(function(r) {
                 if (r.currentActivity) {
-                    var normalizedDesc = r.currentActivity.trim().toUpperCase();
-                    if (!seenFallback[normalizedDesc]) {
-                        seenFallback[normalizedDesc] = true;
-                        acts.push(r.currentActivity.trim());
+                    var fallbackSequence = String(r.currentActivitySequence || '');
+                    var normalizedDesc = instance.normalizeActivityName(r.currentActivity);
+                    var fallbackKey = fallbackSequence || normalizedDesc;
+                    if (!seenFallback[fallbackKey]) {
+                        seenFallback[fallbackKey] = true;
+                        acts.push({
+                            sequence: fallbackSequence,
+                            name: r.currentActivity.trim()
+                        });
                     }
                 }
             });
@@ -1517,38 +1546,93 @@ var Central_de_tarefas = SuperWidget.extend({
             : ' ' + instance._t('central.tarefas.contador.solicitacao.plural')));
 
         // Retrieve the ordered workflow activities for this process
-        var activities = instance.getProcessActivities(processId);
+        var activities = instance.getProcessActivities(processId).slice();
+
+        // O carrossel agrupa por processo/status, enquanto o Kanban distribui por nome
+        // da atividade. Se processState e ds_process_task retornarem descrições diferentes
+        // (idioma, acento ou espaços), preserva o item criando a coluna da atividade atual.
+        var knownActivities = {};
+        var hasProcessActivities = activities.length > 0;
+        activities.forEach(function(activity) {
+            if (activity.sequence) {
+                knownActivities['seq:' + activity.sequence] = true;
+            }
+            knownActivities['name:' + instance.normalizeActivityName(activity.name)] = true;
+        });
+        finalRequests.forEach(function(req) {
+            if (!req.currentActivity) return;
+            if (req.status === 'concluidas' && hasProcessActivities) return;
+            var currentSequence = String(req.currentActivitySequence || '');
+            var normalizedCurrent = instance.normalizeActivityName(req.currentActivity);
+            var currentKey = currentSequence ? 'seq:' + currentSequence : 'name:' + normalizedCurrent;
+            if (normalizedCurrent && !knownActivities[currentKey]) {
+                knownActivities[currentKey] = true;
+                knownActivities['name:' + normalizedCurrent] = true;
+                activities.push({
+                    sequence: currentSequence,
+                    name: req.currentActivity.trim()
+                });
+            }
+        });
 
         if (activities.length === 0) {
             board.append('<div style="padding: 20px; color: var(--text-muted); width: 100%; text-align: center;">' + instance.escapeHtml(instance._t('central.tarefas.empty.atividade')) + '</div>');
             return;
         }
 
+        // Distribui cada cartão uma única vez. Nenhuma solicitação pode ficar sem coluna
+        // por divergência entre sequência/descrição retornadas pelos datasets.
+        var requestsByActivity = activities.map(function() { return []; });
+        finalRequests.forEach(function(req) {
+            var reqSequence = String(req.currentActivitySequence || '');
+            var reqName = instance.normalizeActivityName(req.currentActivity);
+            var targetIndex = -1;
+
+            if (reqSequence) {
+                for (var i = 0; i < activities.length; i++) {
+                    if (String(activities[i].sequence || '') === reqSequence) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (targetIndex === -1 && reqName) {
+                for (var j = 0; j < activities.length; j++) {
+                    if (instance.normalizeActivityName(activities[j].name) === reqName) {
+                        targetIndex = j;
+                        break;
+                    }
+                }
+            }
+
+            if (targetIndex === -1 && req.status === 'concluidas' && activities.length > 0) {
+                targetIndex = activities.length - 1;
+            }
+
+            if (targetIndex === -1) {
+                activities.push({
+                    sequence: reqSequence,
+                    name: req.currentActivity || instance._t('central.tarefas.processo.inicio')
+                });
+                requestsByActivity.push([]);
+                targetIndex = activities.length - 1;
+            }
+
+            requestsByActivity[targetIndex].push(req);
+        });
+
         // Generate columns for each activity
-        activities.forEach(function(activity) {
-            var activityRequests = finalRequests.filter(function(req) {
-                var reqAct = (req.currentActivity || "").trim().toUpperCase();
-                var colAct = activity.trim().toUpperCase();
+        activities.forEach(function(activity, activityIndex) {
+            var activityRequests = requestsByActivity[activityIndex] || [];
 
-                if (reqAct === colAct) {
-                    return true;
-                }
-                var isLastActivity = (activities.indexOf(activity) === activities.length - 1);
-                if (isLastActivity && req.status === "concluidas") {
-                    var matchesOther = activities.some(function(act) {
-                        var otherColAct = act.trim().toUpperCase();
-                        return act !== activity && reqAct === otherColAct;
-                    });
-                    return !matchesOther;
-                }
-                return false;
-            });
-
-            var colId = 'kanban-col-' + instance.instanceId + '-' + activity.replace(/\s+/g, '-');
+            var activityName = activity.name;
+            var colIdSuffix = activity.sequence || activityName.replace(/\s+/g, '-');
+            var colId = 'kanban-col-' + instance.instanceId + '-' + colIdSuffix;
             var colHtml =
                 '<div class="kanban-column" id="' + colId + '">' +
                     '<div class="column-header">' +
-                        '<span class="column-title" title="' + instance.escapeHtml(activity) + '">' + instance.escapeHtml(activity) + '</span>' +
+                        '<span class="column-title" title="' + instance.escapeHtml(activityName) + '">' + instance.escapeHtml(activityName) + '</span>' +
                         '<span class="column-badge">' + activityRequests.length + '</span>' +
                     '</div>' +
                     '<div class="column-cards-container">';
@@ -1568,6 +1652,7 @@ var Central_de_tarefas = SuperWidget.extend({
                     var respName = respId ? instance.getUserDisplayName(respId, null) : instance._t('central.tarefas.filtro.nao.atribuido');
                     var respExtra = (req.assigneeIds && req.assigneeIds.length > 1)
                         ? ' +' + (req.assigneeIds.length - 1) : '';
+                    var cardDescription = instance.getCardDisplayDescription(req);
 
                     colHtml +=
                         '<div class="kanban-card kanban-card-clickable ' + statusClass + '" ' +
@@ -1589,7 +1674,7 @@ var Central_de_tarefas = SuperWidget.extend({
                                           '<line x1="12" y1="17" x2="12.01" y2="17"></line>' +
                                       '</svg>' + instance.escapeHtml(instance._t('central.tarefas.badge.atrasado')) + '</span>'
                                 : '') +
-                            '<p class="card-description">' + instance.escapeHtml(req.descriptor || req.description) + '</p>' +
+                            '<p class="card-description">' + instance.escapeHtml(cardDescription) + '</p>' +
                             '<div class="card-assignee" title="' + instance.escapeHtml(instance._format(instance._t('central.tarefas.tooltip.responsavel'), [respName + respExtra])) + '">' +
                                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-assignee-icon">' +
                                     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>' +
