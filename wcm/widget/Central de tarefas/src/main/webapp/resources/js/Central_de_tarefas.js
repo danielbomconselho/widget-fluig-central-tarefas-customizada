@@ -23,6 +23,7 @@ var Central_de_tarefas = SuperWidget.extend({
     // Cache de atividades por processId (preenchido pelo getProcessActivities).
     // Vive durante a sessão da instância — atividades de processo não mudam em runtime.
     _processStateCache: null,
+    _hiddenProcessActivitiesCache: null,
 
     // Status do carregamento inicial — diferencia vazio legítimo de erro real.
     // Valores: 'ok' | 'error' | 'no-env'
@@ -68,6 +69,243 @@ var Central_de_tarefas = SuperWidget.extend({
             normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         }
         return normalized;
+    },
+
+    getKanbanActivityDisplayName: function(value) {
+        var rawName = String(value || '').trim();
+        var normalizedName = this.normalizeActivityName(rawName);
+        var translationKeys = {
+            'PROPOSE': 'central.tarefas.atividade.propor',
+            'PROPOR': 'central.tarefas.atividade.propor',
+            'PROPONER': 'central.tarefas.atividade.propor',
+            'PROPOSE REVIEW': 'central.tarefas.atividade.revisao.propositor',
+            'REVIEW OF PROPOSER': 'central.tarefas.atividade.revisao.propositor',
+            'REVISAO DO PROPOSITOR': 'central.tarefas.atividade.revisao.propositor',
+            'VALIDATE': 'central.tarefas.atividade.validar',
+            'VALIDAR': 'central.tarefas.atividade.validar',
+            'PRE-VALIDATE': 'central.tarefas.atividade.pre.validar',
+            'PRE VALIDATE': 'central.tarefas.atividade.pre.validar',
+            'PRE-VALIDAR': 'central.tarefas.atividade.pre.validar',
+            'PRE-VALIDATE ?': 'central.tarefas.atividade.pre.validar',
+            'PRE-VALIDAR ?': 'central.tarefas.atividade.pre.validar',
+            'RECOMMEND': 'central.tarefas.atividade.recomendar',
+            'RECOMENDAR': 'central.tarefas.atividade.recomendar',
+            'DECIDE': 'central.tarefas.atividade.decidir',
+            'DECIDIR': 'central.tarefas.atividade.decidir',
+            'CONFIRM': 'central.tarefas.atividade.confirmar',
+            'CONFIRMAR': 'central.tarefas.atividade.confirmar',
+            'REPORT': 'central.tarefas.atividade.reportar',
+            'REPORTAR': 'central.tarefas.atividade.reportar',
+            'REVIEW': 'central.tarefas.atividade.revisar',
+            'REVISAR': 'central.tarefas.atividade.revisar',
+            'VALIDATOR': 'central.tarefas.atividade.validador',
+            'VALIDADOR': 'central.tarefas.atividade.validador',
+            'PRE-REVIEW': 'central.tarefas.atividade.pre.revisao',
+            'PRE REVIEW': 'central.tarefas.atividade.pre.revisao',
+            'PRE-REVISAO': 'central.tarefas.atividade.pre.revisao'
+        };
+        var translationKey = translationKeys[normalizedName];
+
+        if (!translationKey) {
+            var numberedValidator = normalizedName.match(/^(VALIDATOR|VALIDADOR)\s*(#\s*\d+)$/);
+            if (numberedValidator) {
+                return this._t('central.tarefas.atividade.validador') + ' ' + numberedValidator[2].replace(/\s+/g, '');
+            }
+        }
+
+        return translationKey ? this._t(translationKey) : rawName;
+    },
+
+    isInitialActivityName: function(value) {
+        var normalizedName = this.normalizeActivityName(value);
+        var initialNames = [
+            this._t('central.tarefas.processo.inicio'),
+            this._t('central.tarefas.kanban.rascunho'),
+            'Inicio', 'Start', 'Rascunho', 'Draft', 'Borrador'
+        ];
+
+        for (var i = 0; i < initialNames.length; i++) {
+            if (normalizedName === this.normalizeActivityName(initialNames[i])) return true;
+        }
+        return false;
+    },
+
+    isMissingDisplayText: function(value) {
+        var text = String(value === undefined || value === null ? '' : value).trim();
+        if (!text) return true;
+
+        var meaningfulPart = text
+            .replace(/undefined|null|nan/gi, '')
+            .replace(/[\s\-\u2013\u2014|\/:,;()[\]{}_]+/g, '');
+        return meaningfulPart === '';
+    },
+
+    // Consolida atividades equivalentes em uma unica coluna do Kanban.
+    // Duas atividades pertencem ao mesmo grupo quando compartilham o codigo
+    // (sequence) OU o nome normalizado. O mapa de aliases preserva todos os
+    // codigos/nomes encontrados para que os cartoes de ambas sejam associados.
+    mergeKanbanActivities: function(activities) {
+        var instance = this;
+        var merged = [];
+
+        (activities || []).forEach(function(activity) {
+            if (!activity) return;
+
+            var sequence = String(activity.sequence || '').trim();
+            var name = String(activity.name || '').trim();
+            var normalizedName = instance.normalizeActivityName(name);
+            var sequenceKey = sequence ? 'seq:' + sequence : null;
+            var nameKey = normalizedName ? 'name:' + normalizedName : null;
+            var matchingIndexes = [];
+
+            for (var i = 0; i < merged.length; i++) {
+                var aliases = merged[i]._kanbanAliases || {};
+                if ((sequenceKey && aliases[sequenceKey]) || (nameKey && aliases[nameKey])) {
+                    matchingIndexes.push(i);
+                }
+            }
+
+            if (matchingIndexes.length === 0) {
+                var newActivity = {
+                    sequence: sequence,
+                    name: name,
+                    _isInitial: activity._isInitial === true,
+                    _isFinal: activity._isFinal === true,
+                    _kanbanAliases: {}
+                };
+                if (sequenceKey) newActivity._kanbanAliases[sequenceKey] = true;
+                if (nameKey) newActivity._kanbanAliases[nameKey] = true;
+                merged.push(newActivity);
+                return;
+            }
+
+            var target = merged[matchingIndexes[0]];
+            if (!target.sequence && sequence) target.sequence = sequence;
+            if (!target.name && name) target.name = name;
+            if (activity._isInitial === true) target._isInitial = true;
+            if (activity._isFinal === true) target._isFinal = true;
+            if (sequenceKey) target._kanbanAliases[sequenceKey] = true;
+            if (nameKey) target._kanbanAliases[nameKey] = true;
+
+            // Um registro pode ligar dois grupos antes separados (mesmo codigo de
+            // um e mesmo nome de outro). Une esses grupos de forma transitiva.
+            for (var m = matchingIndexes.length - 1; m >= 1; m--) {
+                var sourceIndex = matchingIndexes[m];
+                var source = merged[sourceIndex];
+                var sourceAliases = source._kanbanAliases || {};
+                for (var alias in sourceAliases) {
+                    if (sourceAliases.hasOwnProperty(alias)) {
+                        target._kanbanAliases[alias] = true;
+                    }
+                }
+                if (!target.sequence && source.sequence) target.sequence = source.sequence;
+                if (!target.name && source.name) target.name = source.name;
+                if (source._isInitial === true) target._isInitial = true;
+                if (source._isFinal === true) target._isFinal = true;
+                merged.splice(sourceIndex, 1);
+            }
+        });
+
+        return merged;
+    },
+
+    findKanbanActivityIndex: function(activities, sequence, name) {
+        var normalizedSequence = String(sequence || '').trim();
+        var normalizedName = this.normalizeActivityName(name);
+        var sequenceKey = normalizedSequence ? 'seq:' + normalizedSequence : null;
+        var nameKey = normalizedName ? 'name:' + normalizedName : null;
+
+        for (var i = 0; i < activities.length; i++) {
+            var aliases = activities[i]._kanbanAliases || {};
+            if ((sequenceKey && aliases[sequenceKey]) || (nameKey && aliases[nameKey])) {
+                return i;
+            }
+        }
+        return -1;
+    },
+
+    isRequestInHiddenActivity: function(hiddenActivities, visibleActivities, request) {
+        var sequence = String(request.currentActivitySequence || '').trim();
+        var displayName = this.getKanbanActivityDisplayName(request.currentActivity);
+        var nameKey = 'name:' + this.normalizeActivityName(displayName);
+
+        // O codigo identifica o elemento BPMN sem ambiguidade. Isso evita ocultar
+        // uma tarefa humana quando existe um gateway homonimo (ex.: VALIDATE).
+        if (sequence) {
+            var sequenceKey = 'seq:' + sequence;
+            for (var i = 0; i < hiddenActivities.length; i++) {
+                if ((hiddenActivities[i]._kanbanAliases || {})[sequenceKey]) return true;
+            }
+            return false;
+        }
+
+        // Sem codigo, um nome que tambem pertence a uma atividade visivel deve
+        // permanecer no quadro; somente nomes exclusivamente ocultos sao removidos.
+        for (var v = 0; v < visibleActivities.length; v++) {
+            if ((visibleActivities[v]._kanbanAliases || {})[nameKey]) return false;
+        }
+        for (var h = 0; h < hiddenActivities.length; h++) {
+            if ((hiddenActivities[h]._kanbanAliases || {})[nameKey]) return true;
+        }
+        return false;
+    },
+
+    isTruthyProcessStateFlag: function(value) {
+        return value === true || value === 1 || String(value || '').toLowerCase() === 'true' || String(value) === '1';
+    },
+
+    isInitialKanbanActivity: function(activity) {
+        activity = activity || {};
+
+        var rawBpmnType = activity.bpmnType;
+        if (rawBpmnType === undefined || rawBpmnType === null || rawBpmnType === '') {
+            rawBpmnType = activity.BPMN_TYPE || activity.bpmn_type;
+        }
+        var bpmnType = parseInt(rawBpmnType, 10);
+
+        return (!isNaN(bpmnType) && bpmnType >= 10 && bpmnType <= 16)
+            || this.isTruthyProcessStateFlag(activity.initialState);
+    },
+
+    isFinalKanbanActivity: function(activity) {
+        activity = activity || {};
+
+        var rawBpmnType = activity.bpmnType;
+        if (rawBpmnType === undefined || rawBpmnType === null || rawBpmnType === '') {
+            rawBpmnType = activity.BPMN_TYPE || activity.bpmn_type;
+        }
+        var bpmnType = parseInt(rawBpmnType, 10);
+
+        return (!isNaN(bpmnType) && bpmnType >= 60 && bpmnType <= 68)
+            || this.isTruthyProcessStateFlag(activity.finalState);
+    },
+
+    // Gateways e eventos intermediarios sao elementos de roteamento do fluxo,
+    // nao etapas de trabalho que devam ocupar uma coluna no Kanban.
+    isHiddenKanbanActivity: function(activity) {
+        activity = activity || {};
+
+        var rawBpmnType = activity.bpmnType;
+        if (rawBpmnType === undefined || rawBpmnType === null || rawBpmnType === '') {
+            rawBpmnType = activity.BPMN_TYPE || activity.bpmn_type;
+        }
+        var bpmnType = parseInt(rawBpmnType, 10);
+
+        // 30-43: eventos intermediarios; 120-127: familia de gateways.
+        if (!isNaN(bpmnType) && ((bpmnType >= 30 && bpmnType <= 43) || (bpmnType >= 120 && bpmnType <= 127))) {
+            return true;
+        }
+
+        // Fallback para versoes que nao retornam bpmnType de forma consistente.
+        var rawStateType = activity.stateType;
+        if (rawStateType === undefined || rawStateType === null || rawStateType === '') {
+            rawStateType = activity.STATE_TYPE || activity.state_type;
+        }
+        var stateType = parseInt(rawStateType, 10);
+        if (stateType === 3 || stateType === 4) return true; // Fork / Join
+
+        return this.isTruthyProcessStateFlag(activity.fork)
+            || this.isTruthyProcessStateFlag(activity.join);
     },
 
     _getStatusLabels: function(variant) {
@@ -117,6 +355,7 @@ var Central_de_tarefas = SuperWidget.extend({
         instance.categoryLabelMap = {};
         instance.processLabelMap = {};
         instance._processStateCache = {};
+        instance._hiddenProcessActivitiesCache = {};
 
         // Hide containers initially
         $('#carousel-section-' + instance.instanceId).addClass('d-none');
@@ -256,9 +495,9 @@ var Central_de_tarefas = SuperWidget.extend({
 
     getCurrentLanguage: function() {
         if (typeof WCMAPI !== 'undefined') {
-            if (WCMAPI.locale) return WCMAPI.locale;
-            if (WCMAPI.getLocale) return WCMAPI.getLocale();
-            if (WCMAPI.language) return WCMAPI.language;
+            if (typeof WCMAPI.getLocale === 'function') return WCMAPI.getLocale();
+            if (typeof WCMAPI.locale === 'string' && WCMAPI.locale) return WCMAPI.locale;
+            if (typeof WCMAPI.language === 'string' && WCMAPI.language) return WCMAPI.language;
         }
         if (typeof navigator !== 'undefined') {
             return navigator.language || navigator.userLanguage || 'pt-BR';
@@ -266,9 +505,28 @@ var Central_de_tarefas = SuperWidget.extend({
         return 'pt-BR';
     },
 
+    getLocalizedProcessFallback: function(processId, fallback) {
+        var normalizedProcessId = String(processId || '').trim().toLowerCase();
+        var key = 'central.tarefas.processo.nome.' + normalizedProcessId;
+        var translated = this._t(key);
+        return translated && translated !== key ? translated : fallback;
+    },
+
+    getDatasetRowValue: function(row, fieldNames) {
+        row = row || {};
+        for (var i = 0; i < fieldNames.length; i++) {
+            var value = row[fieldNames[i]];
+            if (value !== undefined && value !== null && value !== '' && value !== 'null') {
+                return value;
+            }
+        }
+        return null;
+    },
+
     getTranslatedProcessLabel: function(processId, fallback) {
         var instance = this;
-        if (!processId || typeof DatasetFactory === 'undefined') return fallback;
+        var localizedFallback = instance.getLocalizedProcessFallback(processId, fallback);
+        if (!processId || typeof DatasetFactory === 'undefined') return localizedFallback;
 
         try {
             var idioma = instance.getCurrentLanguage();
@@ -279,31 +537,37 @@ var Central_de_tarefas = SuperWidget.extend({
             ];
             instance._perfCount('dataset.ds_traducao_dos_processos');
             var ds = DatasetFactory.getDataset("ds_traducao_dos_processos", null, constraints, null);
-            if (!ds || !ds.values || ds.values.length === 0) return fallback;
+            if (!ds || !ds.values || ds.values.length === 0) return localizedFallback;
 
-            var row = ds.values[0];
+            var row = null;
+            var rowWithoutLanguage = null;
             for (var i = 0; i < ds.values.length; i++) {
                 var candidate = ds.values[i];
-                var rowIdioma = candidate.IDIOMA
-                    || candidate.idioma
-                    || candidate.LANGUAGE
-                    || candidate.language
-                    || candidate.LOCALE
-                    || candidate.locale
-                    || candidate.LANG
-                    || candidate.lang;
+                var rowIdioma = instance.getDatasetRowValue(candidate, [
+                    'IDIOMA', 'idioma',
+                    'LANGUAGE', 'language',
+                    'LANGUAGE_ID', 'languageId', 'language_id',
+                    'LOCALE', 'locale',
+                    'LANG', 'lang'
+                ]);
                 if (rowIdioma && String(rowIdioma).replace('_', '-').toLowerCase() === normalizedIdioma) {
                     row = candidate;
                     break;
                 }
+                if (!rowIdioma && !rowWithoutLanguage) rowWithoutLanguage = candidate;
             }
 
-            return row.DESCRIPTION && row.DESCRIPTION !== 'null'
-                ? row.DESCRIPTION
-                : fallback;
+            row = row || rowWithoutLanguage;
+            if (!row) return localizedFallback;
+
+            return instance.getDatasetRowValue(row, [
+                'DESCRIPTION', 'description',
+                'PROCESS_DESCRIPTION', 'processDescription',
+                'DESCRICAO', 'descricao'
+            ]) || localizedFallback;
         } catch (e) {
             console.warn('[CentralTarefas] Falha ao traduzir processo ' + processId + ':', e);
-            return fallback;
+            return localizedFallback;
         }
     },
 
@@ -330,7 +594,7 @@ var Central_de_tarefas = SuperWidget.extend({
         var displayProcessName = instance.getProcessDisplayName(req.processId, rawProcessName);
         var descriptor = String(req.descriptor || '');
 
-        if (!descriptor) {
+        if (instance.isMissingDisplayText(descriptor)) {
             return instance._format(
                 instance._t('central.tarefas.solicitacao.descricao'),
                 [displayProcessName]
@@ -533,11 +797,50 @@ var Central_de_tarefas = SuperWidget.extend({
         // ativa OU é o requester. Se loggedUser indisponível, mantém comportamento legado (sem filtro).
         var loggedUser = this.getLoggedUser();
         try {
-            // Get all workflow instances
+            // Solicitações abertas continuam sendo consultadas pelo filtro ativo.
             var constraintsWorkflow = [];
             constraintsWorkflow.push(DatasetFactory.createConstraint("active", "true", "true", ConstraintType.MUST));
             this._perfCount('dataset.workflowProcess');
-            var dsWorkflow = DatasetFactory.getDataset("workflowProcess", null, constraintsWorkflow, null);
+            var dsWorkflowActive = DatasetFactory.getDataset("workflowProcess", null, constraintsWorkflow, null);
+            var workflowValuesAll = (dsWorkflowActive && dsWorkflowActive.values)
+                ? dsWorkflowActive.values.slice()
+                : [];
+
+            // Encerradas (status 1 = cancelada ou 2 = finalizada) nao possuem tarefa
+            // ativa. Busca somente as solicitadas pelo usuario logado para preservar
+            // o escopo pessoal sem carregar todo o historico do tenant.
+            if (loggedUser) {
+                try {
+                    var constraintsClosedWorkflow = [
+                        DatasetFactory.createConstraint("active", "false", "false", ConstraintType.MUST),
+                        DatasetFactory.createConstraint("requesterId", loggedUser, loggedUser, ConstraintType.MUST)
+                    ];
+                    this._perfCount('dataset.workflowProcess.closed');
+                    var dsWorkflowClosed = DatasetFactory.getDataset("workflowProcess", null, constraintsClosedWorkflow, null);
+                    if (dsWorkflowClosed && dsWorkflowClosed.values) {
+                        var seenWorkflowInstances = {};
+                        workflowValuesAll.forEach(function(row) {
+                            var rowId = row.processInstanceId || row["workflowProcessPK.processInstanceId"];
+                            if (rowId !== undefined && rowId !== null) {
+                                seenWorkflowInstances[String(rowId)] = true;
+                            }
+                        });
+                        dsWorkflowClosed.values.forEach(function(row) {
+                            var rowId = row.processInstanceId || row["workflowProcessPK.processInstanceId"];
+                            var rowKey = rowId !== undefined && rowId !== null ? String(rowId) : null;
+                            if (!rowKey || !seenWorkflowInstances[rowKey]) {
+                                if (rowKey) seenWorkflowInstances[rowKey] = true;
+                                workflowValuesAll.push(row);
+                            }
+                        });
+                    }
+                } catch (closedWorkflowError) {
+                    // A falha no historico nao impede a exibicao das tarefas abertas.
+                    console.warn("Erro ao consultar solicitacoes finalizadas/canceladas:", closedWorkflowError);
+                }
+            }
+
+            var dsWorkflow = { values: workflowValuesAll };
             if (dsWorkflow && dsWorkflow.values && dsWorkflow.values.length > 0) {
 
                 // Get active tasks to find current activity name, deadlines and assignees.
@@ -634,8 +937,17 @@ var Central_de_tarefas = SuperWidget.extend({
                     var requester = requesterName || requesterId || this._t('central.tarefas.filtro.solicitante');
                     var start = w.startDate || w.startPeriod;
 
-                    // Determine request state (active/inactive)
-                    var active = w.active === "true" || w.active === true || w.state === 0 || w.state === "0";
+                    // workflowProcess.status: 0 aberto, 1 cancelado, 2 finalizado.
+                    // Cancelados e finalizados compartilham a coluna "Finalizadas".
+                    var workflowStatus = parseInt(w.status, 10);
+                    var isClosed = workflowStatus === 1 || workflowStatus === 2;
+                    var active = !isClosed && (
+                        w.active === "true"
+                        || w.active === true
+                        || workflowStatus === 0
+                        || w.state === 0
+                        || w.state === "0"
+                    );
 
                     var dateStr = "";
                     if (start) {
@@ -882,10 +1194,10 @@ var Central_de_tarefas = SuperWidget.extend({
 
                 // Prioridade do texto: documentDescription → cardDescription
                 var text = chosen.documentDescription;
-                if (!text || text === 'null' || String(text).trim() === '') {
+                if (self.isMissingDisplayText(text)) {
                     text = chosen.cardDescription;
                 }
-                if (text && text !== 'null' && String(text).trim() !== '') {
+                if (!self.isMissingDisplayText(text)) {
                     map[docId] = String(text).trim();
                 }
             } catch (e) {
@@ -1414,6 +1726,7 @@ var Central_de_tarefas = SuperWidget.extend({
         }
 
         var activities = [];
+        var hiddenActivities = [];
 
         // 1. Tenta buscar do Fluig se estiver no ambiente usando o dataset processState
         if (typeof DatasetFactory !== 'undefined' && typeof WCMAPI !== 'undefined') {
@@ -1423,7 +1736,6 @@ var Central_de_tarefas = SuperWidget.extend({
 
                 var companyId = WCMAPI.getCompanyId ? WCMAPI.getCompanyId() : (WCMAPI.organizationId || "1");
                 constraints.push(DatasetFactory.createConstraint("processStatePK.companyId", companyId, companyId, ConstraintType.MUST));
-                constraints.push(DatasetFactory.createConstraint("automatic", false, false, ConstraintType.MUST));
 
                 instance._perfCount('dataset.processState');
                 var dsProcessState = DatasetFactory.getDataset("processState", null, constraints, null);
@@ -1442,14 +1754,44 @@ var Central_de_tarefas = SuperWidget.extend({
                         var desc = row.stateName || row.stateDescription;
                         var seq = parseInt(row["processStatePK.sequence"] || row.sequence || 0);
 
-                        if (desc && desc.trim() !== "" && seq > 0) {
+                        if (seq > 0) {
                             var activitySequence = String(seq);
+                            var activity = {
+                                sequence: activitySequence,
+                                name: desc ? String(desc).trim() : '',
+                                bpmnType: row.bpmnType,
+                                stateType: row.stateType,
+                                automatic: row.automatic,
+                                fork: row.fork,
+                                join: row.join,
+                                initialState: row.initialState,
+                                finalState: row.finalState
+                            };
+
+                            if (instance.isHiddenKanbanActivity(activity)) {
+                                hiddenActivities.push(activity);
+                                return;
+                            }
+
+                            if (instance.isInitialKanbanActivity(activity)) {
+                                activity.name = instance._t('central.tarefas.kanban.rascunho');
+                                activity._isInitial = true;
+                            } else if (instance.isFinalKanbanActivity(activity)) {
+                                activity.name = instance._t('central.tarefas.kanban.finalizadas');
+                                activity._isFinal = true;
+                            } else {
+                                activity.name = instance.getKanbanActivityDisplayName(activity.name);
+                            }
+
+                            if (!activity.name) return;
+
+                            // Preserva o comportamento anterior da consulta, que trazia
+                            // somente estados nao automaticos.
+                            if (!activity._isInitial && !activity._isFinal && instance.isTruthyProcessStateFlag(activity.automatic)) return;
+
                             if (!seen[activitySequence]) {
                                 seen[activitySequence] = true;
-                                activities.push({
-                                    sequence: activitySequence,
-                                    name: desc.trim()
-                                });
+                                activities.push(activity);
                             }
                         }
                     });
@@ -1460,6 +1802,8 @@ var Central_de_tarefas = SuperWidget.extend({
         }
 
         // 2. Fallback estático (vazio hoje)
+        hiddenActivities = instance.mergeKanbanActivities(hiddenActivities);
+
         if (activities.length === 0) {
             var maps = {};
             activities = maps[processId] || [];
@@ -1476,12 +1820,28 @@ var Central_de_tarefas = SuperWidget.extend({
                 if (r.currentActivity) {
                     var fallbackSequence = String(r.currentActivitySequence || '');
                     var normalizedDesc = instance.normalizeActivityName(r.currentActivity);
-                    var fallbackKey = fallbackSequence || normalizedDesc;
-                    if (!seenFallback[fallbackKey]) {
+                    var fallbackIsFinal = r.status === 'concluidas';
+                    var fallbackIsInitial = !fallbackIsFinal
+                        && instance.isInitialActivityName(r.currentActivity);
+                    var fallbackKey = fallbackIsFinal
+                        ? '__finalizadas__'
+                        : (fallbackIsInitial ? '__rascunho__' : (fallbackSequence || normalizedDesc));
+                    var isHidden = instance.findKanbanActivityIndex(
+                        hiddenActivities,
+                        fallbackSequence,
+                        normalizedDesc
+                    ) !== -1;
+                    if (!isHidden && !seenFallback[fallbackKey]) {
                         seenFallback[fallbackKey] = true;
                         acts.push({
-                            sequence: fallbackSequence,
-                            name: r.currentActivity.trim()
+                            sequence: fallbackIsFinal || fallbackIsInitial ? '' : fallbackSequence,
+                            name: fallbackIsFinal
+                                ? instance._t('central.tarefas.kanban.finalizadas')
+                                : (fallbackIsInitial
+                                    ? instance._t('central.tarefas.kanban.rascunho')
+                                    : instance.getKanbanActivityDisplayName(r.currentActivity)),
+                            _isInitial: fallbackIsInitial,
+                            _isFinal: fallbackIsFinal
                         });
                     }
                 }
@@ -1492,6 +1852,9 @@ var Central_de_tarefas = SuperWidget.extend({
         // Memoiza por processId (incluindo array vazio — consistência entre chamadas).
         if (instance._processStateCache) {
             instance._processStateCache[processId] = activities;
+        }
+        if (instance._hiddenProcessActivitiesCache) {
+            instance._hiddenProcessActivitiesCache[processId] = hiddenActivities;
         }
 
         return activities;
@@ -1540,13 +1903,27 @@ var Central_de_tarefas = SuperWidget.extend({
             });
         }
 
+        // Retrieve the ordered workflow activities for this process
+        var activities = instance.getProcessActivities(processId).slice();
+        var hiddenActivities = (instance._hiddenProcessActivitiesCache
+            && instance._hiddenProcessActivitiesCache[processId]) || [];
+
+        // Cartoes parados em gateways/eventos intermediarios tambem ficam fora do
+        // Kanban, mantendo o contador coerente com as colunas efetivamente exibidas.
+        if (hiddenActivities.length > 0) {
+            finalRequests = finalRequests.filter(function(req) {
+                return !instance.isRequestInHiddenActivity(
+                    hiddenActivities,
+                    activities,
+                    req
+                );
+            });
+        }
+
         // Update total counter in Kanban badge
         $('#kanban-total-requests-' + instance.instanceId).text(finalRequests.length + (finalRequests.length === 1
             ? ' ' + instance._t('central.tarefas.contador.solicitacao.singular')
             : ' ' + instance._t('central.tarefas.contador.solicitacao.plural')));
-
-        // Retrieve the ordered workflow activities for this process
-        var activities = instance.getProcessActivities(processId).slice();
 
         // O carrossel agrupa por processo/status, enquanto o Kanban distribui por nome
         // da atividade. Se processState e ds_process_task retornarem descrições diferentes
@@ -1563,17 +1940,71 @@ var Central_de_tarefas = SuperWidget.extend({
             if (!req.currentActivity) return;
             if (req.status === 'concluidas' && hasProcessActivities) return;
             var currentSequence = String(req.currentActivitySequence || '');
-            var normalizedCurrent = instance.normalizeActivityName(req.currentActivity);
+            var isInitialRequest = instance.isInitialActivityName(req.currentActivity);
+            var hasInitialActivity = activities.some(function(activity) {
+                return activity._isInitial === true;
+            });
+            if (isInitialRequest && hasInitialActivity) return;
+
+            var displayCurrent = isInitialRequest
+                ? instance._t('central.tarefas.kanban.rascunho')
+                : instance.getKanbanActivityDisplayName(req.currentActivity);
+            var normalizedCurrent = instance.normalizeActivityName(displayCurrent);
             var currentKey = currentSequence ? 'seq:' + currentSequence : 'name:' + normalizedCurrent;
             if (normalizedCurrent && !knownActivities[currentKey]) {
                 knownActivities[currentKey] = true;
                 knownActivities['name:' + normalizedCurrent] = true;
                 activities.push({
-                    sequence: currentSequence,
-                    name: req.currentActivity.trim()
+                    sequence: isInitialRequest ? '' : currentSequence,
+                    name: displayCurrent,
+                    _isInitial: isInitialRequest
                 });
             }
         });
+
+        var hasCompletedRequests = finalRequests.some(function(req) {
+            return req.status === 'concluidas';
+        });
+        var hasFinalActivity = activities.some(function(activity) {
+            return activity._isFinal === true;
+        });
+        if (hasCompletedRequests && !hasFinalActivity) {
+            activities.push({
+                sequence: '',
+                name: instance._t('central.tarefas.kanban.finalizadas'),
+                _isFinal: true
+            });
+        }
+
+        // processState pode conter atividades repetidas por codigo ou descricao.
+        // A consolidacao ocorre antes da distribuicao para garantir uma coluna unica.
+        activities = instance.mergeKanbanActivities(activities);
+
+        // A coluna de inicio, quando existir, recebe o nome Rascunho e abre o fluxo.
+        var initialActivityIndex = -1;
+        for (var initialIndex = 0; initialIndex < activities.length; initialIndex++) {
+            if (activities[initialIndex]._isInitial === true) {
+                initialActivityIndex = initialIndex;
+                break;
+            }
+        }
+        if (initialActivityIndex > 0) {
+            activities.unshift(activities.splice(initialActivityIndex, 1)[0]);
+            initialActivityIndex = 0;
+        }
+
+        // A coluna consolidada de termino fica sempre ao final do fluxo visual.
+        var finalActivityIndex = -1;
+        for (var finalIndex = 0; finalIndex < activities.length; finalIndex++) {
+            if (activities[finalIndex]._isFinal === true) {
+                finalActivityIndex = finalIndex;
+                break;
+            }
+        }
+        if (finalActivityIndex !== -1 && finalActivityIndex !== activities.length - 1) {
+            activities.push(activities.splice(finalActivityIndex, 1)[0]);
+            finalActivityIndex = activities.length - 1;
+        }
 
         if (activities.length === 0) {
             board.append('<div style="padding: 20px; color: var(--text-muted); width: 100%; text-align: center;">' + instance.escapeHtml(instance._t('central.tarefas.empty.atividade')) + '</div>');
@@ -1585,36 +2016,20 @@ var Central_de_tarefas = SuperWidget.extend({
         var requestsByActivity = activities.map(function() { return []; });
         finalRequests.forEach(function(req) {
             var reqSequence = String(req.currentActivitySequence || '');
-            var reqName = instance.normalizeActivityName(req.currentActivity);
-            var targetIndex = -1;
-
-            if (reqSequence) {
-                for (var i = 0; i < activities.length; i++) {
-                    if (String(activities[i].sequence || '') === reqSequence) {
-                        targetIndex = i;
-                        break;
-                    }
-                }
-            }
-
-            if (targetIndex === -1 && reqName) {
-                for (var j = 0; j < activities.length; j++) {
-                    if (instance.normalizeActivityName(activities[j].name) === reqName) {
-                        targetIndex = j;
-                        break;
-                    }
-                }
-            }
-
-            if (targetIndex === -1 && req.status === 'concluidas' && activities.length > 0) {
-                targetIndex = activities.length - 1;
-            }
+            var reqDisplayName = instance.getKanbanActivityDisplayName(req.currentActivity);
+            var reqName = instance.normalizeActivityName(reqDisplayName);
+            var targetIndex = req.status === 'concluidas' && finalActivityIndex !== -1
+                ? finalActivityIndex
+                : (instance.isInitialActivityName(req.currentActivity) && initialActivityIndex !== -1
+                    ? initialActivityIndex
+                    : instance.findKanbanActivityIndex(activities, reqSequence, reqName));
 
             if (targetIndex === -1) {
-                activities.push({
+                var fallbackActivities = instance.mergeKanbanActivities([{
                     sequence: reqSequence,
-                    name: req.currentActivity || instance._t('central.tarefas.processo.inicio')
-                });
+                    name: reqDisplayName || instance._t('central.tarefas.processo.inicio')
+                }]);
+                activities.push(fallbackActivities[0]);
                 requestsByActivity.push([]);
                 targetIndex = activities.length - 1;
             }
@@ -1627,7 +2042,11 @@ var Central_de_tarefas = SuperWidget.extend({
             var activityRequests = requestsByActivity[activityIndex] || [];
 
             var activityName = activity.name;
-            var colIdSuffix = activity.sequence || activityName.replace(/\s+/g, '-');
+            var colIdSuffix = activity._isInitial
+                ? 'rascunho'
+                : (activity._isFinal
+                    ? 'finalizadas'
+                    : (activity.sequence || activityName.replace(/\s+/g, '-')));
             var colId = 'kanban-col-' + instance.instanceId + '-' + colIdSuffix;
             var colHtml =
                 '<div class="kanban-column" id="' + colId + '">' +

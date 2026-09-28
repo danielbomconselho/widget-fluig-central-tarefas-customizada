@@ -14,15 +14,16 @@
 			"companyId": 1
 		},
 		{
-			"id": "9ftq5eqf6bmk2n7dogca0cn7po0mk",
+			"id": "x8jy9t0pblrmrw88brznoev9viae4",
 			"name": "Produção",
 			"host": "concrematengenharia192278.fluig.cloudtotvs.com.br",
 			"ssl": true,
 			"port": 443,
 			"username": "daniel.sales",
-			"password": "eyJpdiI6ImQ5Y2NiZDg2Njc1MzkzZWVhZDhlYzcwY2MwZDA3ODEyIiwic2FsdCI6ImY2YzM0NzFiMzg2Y2E1YzgyNDM5ZmY2ZDE2YWFlYTEyIiwidGV4dCI6ImJmY2QxZTllYjFkOTJkMjMxM2QxN2YwNTE0ODZhZTEyIn0=",
+			"password": "eyJpdiI6IjZhYzlmYzU4ODIwMGJjMTFmNzUxYjUwMzg1YWMzZTEwIiwic2FsdCI6ImU2MzQxNGFiOTA3NThlYTk4ZTRmZTI4MzdjZTUzOTgyIiwidGV4dCI6IjY2NzhhMzI2Mzc0YTZmYWEyZjFiYWZkMGZkODdkN2Q5In0=",
 			"userCode": "01362904694",
 			"confirmExporting": true,
+			"hasBrowser": false,
 			"companyId": 1
 		}
 	]

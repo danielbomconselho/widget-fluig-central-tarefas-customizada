@@ -1,74 +1,99 @@
 /**
+ * Retorna as traducoes de um processo no idioma solicitado.
  *
-*
-* @param {string[]} fields Campos Solicitados
-* @param {Constraint[]} constraints Filtros
-* @param {string[]} sorts Campos da Ordenação
-* @returns {Dataset}
-* Esse dataset tras a maior versão do documento.
-*/
-function createDataset(fields, constraints, sorts) {
-	log.warn("#### INICIO DATASET PROCESS TASK");
+ * @param {string[]} fields Campos solicitados
+ * @param {Constraint[]} constraints Filtros PROCESSID e IDIOMA
+ * @param {string[]} sortFields Campos de ordenacao
+ * @returns {Dataset}
+ */
+function createDataset(fields, constraints, sortFields) {
 	var dataset = DatasetBuilder.newDataset();
-	var DATASOURCE = 'jdbc/AppDS';
-	var ic = new javax.naming.InitialContext();
-	var ds = ic.lookup(DATASOURCE);
+	var dataSourceName = "jdbc/AppDS";
+	var processId = null;
+	var language = "pt-BR";
 
-	// Captura matrícula da constraint, se houver (NÃO concatena no SQL — usa bind)
-	var processoid = null;
-	var idioma = "pt-BR";
-	if (constraints != null) {
+	if (constraints != null && constraints.length > 0) {
 		for (var i = 0; i < constraints.length; i++) {
-			if (constraints[i].fieldName.toUpperCase() == "PROCESSID") {
-				processoid = constraints[i].initialValue;
-				log.warn("#### PROCESS ID: " + processoid);
-			}
-			if (constraints[i].fieldName.toUpperCase() == "IDIOMA") {
-				idioma = constraints[i].initialValue;
-				log.warn("#### IDIOMA: " + idioma);
+			var fieldName = String(constraints[i].fieldName || "").toUpperCase();
+			if (fieldName == "PROCESSID") {
+				processId = constraints[i].initialValue;
+			} else if (fieldName == "IDIOMA") {
+				language = constraints[i].initialValue;
 			}
 		}
 	}
 
-	var QUERY = "select * from process_definition_translate where PROCESS_ID='"+ processoid + "';";
-	log.warn("#### QUERY: " + QUERY);
+	if (processId == null || String(processId).trim() == "") {
+		dataset.addColumn("msgErro");
+		dataset.addRow(new Array("Constraint PROCESSID nao informada."));
+		return dataset;
+	}
 
+	var query = "select * from process_definition_translate where PROCESS_ID = ?";
 	var conn = null;
 	var stmt = null;
 	var rs = null;
+	var columnsAdded = false;
+
 	try {
-		conn = ds.getConnection();
-		// PreparedStatement com bind de parâmetro — protege contra SQL injection
-		stmt = conn.prepareStatement(QUERY);
+		var initialContext = new javax.naming.InitialContext();
+		var dataSource = initialContext.lookup(dataSourceName);
+		conn = dataSource.getConnection();
+		stmt = conn.prepareStatement(query);
+		stmt.setString(1, String(processId));
 		rs = stmt.executeQuery();
 
-		var columnCount = rs.getMetaData().getColumnCount();
+		var metadata = rs.getMetaData();
+		var columnCount = metadata.getColumnCount();
+		var columnNames = new Array();
+		var languageColumn = null;
 
-		//CRIA O CABEÇALHO
 		for (var c = 1; c <= columnCount; c++) {
-			dataset.addColumn(rs.getMetaData().getColumnName(c));
-		}
+			var columnName = metadata.getColumnName(c);
+			var upperColumnName = String(columnName).toUpperCase();
+			columnNames[c - 1] = columnName;
+			dataset.addColumn(columnName);
 
-		//LOOPING DOS REGISTROS
-		while (rs.next()) {
-			var Arr = new Array();
-			for (var w = 1; w <= columnCount; w++) {
-				var obj = rs.getObject(rs.getMetaData().getColumnName(w));
-				if (null != obj) {
-					Arr[w - 1] = rs.getObject(rs.getMetaData().getColumnName(w)).toString();
-				} else {
-					Arr[w - 1] = "null";
-				}
+			if (upperColumnName == "IDIOMA"
+				|| upperColumnName == "LANGUAGE"
+				|| upperColumnName == "LANGUAGE_ID"
+				|| upperColumnName == "LOCALE"
+				|| upperColumnName == "LANG") {
+				languageColumn = columnName;
 			}
-			dataset.addRow(Arr);
+		}
+		columnsAdded = true;
+
+		while (rs.next()) {
+			if (languageColumn != null) {
+				var rowLanguageObject = rs.getObject(languageColumn);
+				var rowLanguage = rowLanguageObject == null ? "" : String(rowLanguageObject);
+				if (normalizeLocale(rowLanguage) != normalizeLocale(language)) continue;
+			}
+
+			var rowValues = new Array();
+			for (var w = 1; w <= columnCount; w++) {
+				var value = rs.getObject(columnNames[w - 1]);
+				rowValues[w - 1] = value == null ? "null" : value.toString();
+			}
+			dataset.addRow(rowValues);
 		}
 	} catch (e) {
-		throw('Erro ao executar a query (linha: ' + e.lineNumber + '): ' + e.message + '\n' + QUERY);
+		var errorMessage = "Erro ao consultar traducao do processo: " + e.message;
+		log.error("[ds_traducao_dos_processos] " + errorMessage);
+		if (!columnsAdded) {
+			dataset.addColumn("msgErro");
+			dataset.addRow(new Array(errorMessage));
+		}
 	} finally {
-		// Cleanup robusto — cada close em try/catch isolado
 		try { if (rs != null) rs.close(); } catch (e1) {}
 		try { if (stmt != null) stmt.close(); } catch (e2) {}
 		try { if (conn != null) conn.close(); } catch (e3) {}
 	}
+
 	return dataset;
+}
+
+function normalizeLocale(value) {
+	return String(value || "").replace(/_/g, "-").toLowerCase();
 }
