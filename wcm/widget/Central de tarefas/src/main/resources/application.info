@@ -10,9 +10,10 @@ developer.name=FLUIG-VSCODE-EXTENSION
 developer.url=https://github.com/fluiggers/fluig-vscode-extension
 application.uiwidget=true
 application.mobileapp=false
-application.version=0.7.7
+application.version=0.8.0
 view.file=view.ftl
 edit.file=edit.ftl
 locale.file.base.name=Central_de_tarefas
-application.resource.js.1=/resources/js/Central_de_tarefas.js?v=0.7.7
-application.resource.css.2=/resources/css/Central_de_tarefas.css?v=0.7.7
+application.resource.js.1=/webdesk/vcXMLRPC.js
+application.resource.js.2=/resources/js/Central_de_tarefas.js?v=0.8.0
+application.resource.css.3=/resources/css/Central_de_tarefas.css?v=0.8.0

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="/style-guide/css/fluig-style-guide-flat.min.css">
+    <script src="/portal/resources/js/jquery/jquery.js"></script>
+    <script src="/portal/resources/js/jquery/jquery-ui.min.js"></script>
+    <script src="/portal/resources/js/mustache/mustache-min.js"></script>
+    <script src="/style-guide/js/fluig-style-guide.min.js" charset="utf-8"></script>
+    <script src="custom.js"></script>
+    <title>Configuração da ordem do Kanban</title>
+</head>
+<body>
+    <div class="fluig-style-guide">
+        <form name="form" role="form">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h2 class="panel-title">Configuração da ordem das colunas do Kanban</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="alert alert-info" role="alert">
+                        Cadastre a ordem compartilhada das atividades. Deixe o processo vazio para uma regra global
+                        e use nomes alternativos separados por <strong>|</strong> quando houver traduções diferentes.
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-3 col-md-3">
+                            <div class="form-group">
+                                <label for="perfil">Perfil <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="perfil" id="perfil"
+                                    value="DEFAULT" maxlength="30" required>
+                            </div>
+                        </div>
+                        <div class="col-xs-12 col-sm-6 col-md-6">
+                            <div class="form-group">
+                                <label for="descricao">Descrição</label>
+                                <input type="text" class="form-control" name="descricao" id="descricao"
+                                    value="Ordem padrão da Central de tarefas" maxlength="120">
+                            </div>
+                        </div>
+                        <div class="col-xs-12 col-sm-3 col-md-3">
+                            <div class="form-group">
+                                <label for="ativo">Configuração ativa</label>
+                                <select class="form-control" name="ativo" id="ativo">
+                                    <option value="true" selected>Sim</option>
+                                    <option value="false">Não</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xs-12 col-md-12 table-responsive">
+                            <table tablename="tb_colunas_kanban" id="tb_colunas_kanban"
+                                class="table table-hover table-striped"
+                                noaddbutton="true" nodeletebutton="true">
+                                <thead>
+                                    <tr>
+                                        <th aria-label="Remover"></th>
+                                        <th>Ordem <span class="text-danger">*</span></th>
+                                        <th>Chave da etapa</th>
+                                        <th>Nome da atividade <span class="text-danger">*</span></th>
+                                        <th>Nomes alternativos</th>
+                                        <th>Processo</th>
+                                        <th>Ativa</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <button type="button" class="btn btn-danger btn-sm"
+                                                title="Remover coluna" onclick="removerColuna(this)">
+                                                <i class="fluigicon fluigicon-trash icon-sm" aria-hidden="true"></i>
+                                            </button>
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control" name="ordem_coluna"
+                                                id="ordem_coluna" min="1" step="1" required>
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" name="chave_etapa"
+                                                id="chave_etapa" maxlength="30" placeholder="APROVACAO">
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" name="nome_atividade"
+                                                id="nome_atividade" maxlength="120" required>
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" name="aliases_atividade"
+                                                id="aliases_atividade" maxlength="500" placeholder="Approve|Aprobar">
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" name="process_id"
+                                                id="process_id" maxlength="120" placeholder="Vazio = todos">
+                                        </td>
+                                        <td>
+                                            <select class="form-control" name="ativo_coluna" id="ativo_coluna">
+                                                <option value="true" selected>Sim</option>
+                                                <option value="false">Não</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <button type="button" class="btn btn-primary" onclick="adicionarColuna()">
+                                <i class="fluigicon fluigicon-plus icon-sm" aria-hidden="true"></i>
+                                Adicionar coluna
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

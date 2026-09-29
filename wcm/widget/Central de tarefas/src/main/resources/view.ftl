@@ -1,6 +1,6 @@
 <#ftl encoding="UTF-8">
 <meta charset="UTF-8">
-<script type="text/javascript" src="/webdesk/vcXMLRPC.js"></script>
+<script type="application/javascript" src="/webdesk/vcXMLRPC.js" charset="utf-8"></script>
 <div id="Central_de_tarefas_${instanceId}" class="super-widget wcm-widget-class fluig-style-guide" data-params="Central_de_tarefas.instance()">
     <div id="central-tarefas-i18n-${instanceId}" class="d-none" aria-hidden="true">
         <span data-i18n-key="central.tarefas.abrindo.solicitacao">${i18n.getTranslation('central.tarefas.abrindo.solicitacao')}</span>
@@ -36,17 +36,6 @@
         <span data-i18n-key="central.tarefas.kanban.finalizadas">${i18n.getTranslation('central.tarefas.kanban.finalizadas')}</span>
         <span data-i18n-key="central.tarefas.kanban.rascunho">${i18n.getTranslation('central.tarefas.kanban.rascunho')}</span>
         <span data-i18n-key="central.tarefas.processo.inicio">${i18n.getTranslation('central.tarefas.processo.inicio')}</span>
-        <span data-i18n-key="central.tarefas.atividade.propor">${i18n.getTranslation('central.tarefas.atividade.propor')}</span>
-        <span data-i18n-key="central.tarefas.atividade.revisao.propositor">${i18n.getTranslation('central.tarefas.atividade.revisao.propositor')}</span>
-        <span data-i18n-key="central.tarefas.atividade.validar">${i18n.getTranslation('central.tarefas.atividade.validar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.pre.validar">${i18n.getTranslation('central.tarefas.atividade.pre.validar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.recomendar">${i18n.getTranslation('central.tarefas.atividade.recomendar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.decidir">${i18n.getTranslation('central.tarefas.atividade.decidir')}</span>
-        <span data-i18n-key="central.tarefas.atividade.confirmar">${i18n.getTranslation('central.tarefas.atividade.confirmar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.reportar">${i18n.getTranslation('central.tarefas.atividade.reportar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.revisar">${i18n.getTranslation('central.tarefas.atividade.revisar')}</span>
-        <span data-i18n-key="central.tarefas.atividade.validador">${i18n.getTranslation('central.tarefas.atividade.validador')}</span>
-        <span data-i18n-key="central.tarefas.atividade.pre.revisao">${i18n.getTranslation('central.tarefas.atividade.pre.revisao')}</span>
         <span data-i18n-key="central.tarefas.processo.nome.analysisiftheprojectshouldbedeveloped">${i18n.getTranslation('central.tarefas.processo.nome.analysisiftheprojectshouldbedeveloped')}</span>
         <span data-i18n-key="central.tarefas.solicitacao.descricao">${i18n.getTranslation('central.tarefas.solicitacao.descricao')}</span>
         <span data-i18n-key="central.tarefas.status.andamento">${i18n.getTranslation('central.tarefas.status.andamento')}</span>

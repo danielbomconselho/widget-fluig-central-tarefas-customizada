@@ -20,10 +20,13 @@ var Central_de_tarefas = SuperWidget.extend({
     debugPerf: false,
     _perfCounters: null,
 
-    // Cache de atividades por processId (preenchido pelo getProcessActivities).
-    // Vive durante a sessão da instância — atividades de processo não mudam em runtime.
+    // Cache de atividades por processo e versão (preenchido pelo getProcessActivities).
+    // Vive durante a sessão da instância — atividades de uma versão não mudam em runtime.
     _processStateCache: null,
     _hiddenProcessActivitiesCache: null,
+    _kanbanColumnOrderConfig: null,
+    kanbanColumnOrderDatasetId: 'ds_kanban_ordem_colunas',
+    kanbanColumnOrderProfile: 'DEFAULT',
 
     // Status do carregamento inicial — diferencia vazio legítimo de erro real.
     // Valores: 'ok' | 'error' | 'no-env'
@@ -71,49 +74,119 @@ var Central_de_tarefas = SuperWidget.extend({
         return normalized;
     },
 
-    getKanbanActivityDisplayName: function(value) {
-        var rawName = String(value || '').trim();
-        var normalizedName = this.normalizeActivityName(rawName);
-        var translationKeys = {
-            'PROPOSE': 'central.tarefas.atividade.propor',
-            'PROPOR': 'central.tarefas.atividade.propor',
-            'PROPONER': 'central.tarefas.atividade.propor',
-            'PROPOSE REVIEW': 'central.tarefas.atividade.revisao.propositor',
-            'REVIEW OF PROPOSER': 'central.tarefas.atividade.revisao.propositor',
-            'REVISAO DO PROPOSITOR': 'central.tarefas.atividade.revisao.propositor',
-            'VALIDATE': 'central.tarefas.atividade.validar',
-            'VALIDAR': 'central.tarefas.atividade.validar',
-            'PRE-VALIDATE': 'central.tarefas.atividade.pre.validar',
-            'PRE VALIDATE': 'central.tarefas.atividade.pre.validar',
-            'PRE-VALIDAR': 'central.tarefas.atividade.pre.validar',
-            'PRE-VALIDATE ?': 'central.tarefas.atividade.pre.validar',
-            'PRE-VALIDAR ?': 'central.tarefas.atividade.pre.validar',
-            'RECOMMEND': 'central.tarefas.atividade.recomendar',
-            'RECOMENDAR': 'central.tarefas.atividade.recomendar',
-            'DECIDE': 'central.tarefas.atividade.decidir',
-            'DECIDIR': 'central.tarefas.atividade.decidir',
-            'CONFIRM': 'central.tarefas.atividade.confirmar',
-            'CONFIRMAR': 'central.tarefas.atividade.confirmar',
-            'REPORT': 'central.tarefas.atividade.reportar',
-            'REPORTAR': 'central.tarefas.atividade.reportar',
-            'REVIEW': 'central.tarefas.atividade.revisar',
-            'REVISAR': 'central.tarefas.atividade.revisar',
-            'VALIDATOR': 'central.tarefas.atividade.validador',
-            'VALIDADOR': 'central.tarefas.atividade.validador',
-            'PRE-REVIEW': 'central.tarefas.atividade.pre.revisao',
-            'PRE REVIEW': 'central.tarefas.atividade.pre.revisao',
-            'PRE-REVISAO': 'central.tarefas.atividade.pre.revisao'
-        };
-        var translationKey = translationKeys[normalizedName];
+    normalizeProcessId: function(value) {
+        return String(value || '').trim().toUpperCase();
+    },
 
-        if (!translationKey) {
-            var numberedValidator = normalizedName.match(/^(VALIDATOR|VALIDADOR)\s*(#\s*\d+)$/);
-            if (numberedValidator) {
-                return this._t('central.tarefas.atividade.validador') + ' ' + numberedValidator[2].replace(/\s+/g, '');
-            }
+    createEmptyKanbanColumnOrderConfig: function() {
+        return {
+            global: {},
+            byProcess: {}
+        };
+    },
+
+    loadKanbanColumnOrder: function() {
+        var instance = this;
+        var config = instance.createEmptyKanbanColumnOrderConfig();
+        instance._kanbanColumnOrderConfig = config;
+
+        if (typeof DatasetFactory === 'undefined' || typeof ConstraintType === 'undefined') {
+            return config;
         }
 
-        return translationKey ? this._t(translationKey) : rawName;
+        try {
+            var profile = String(instance.kanbanColumnOrderProfile || 'DEFAULT').trim();
+            var constraints = [
+                DatasetFactory.createConstraint('perfil', profile, profile, ConstraintType.MUST)
+            ];
+
+            instance._perfCount('dataset.kanbanColumnOrder');
+            var dataset = DatasetFactory.getDataset(
+                instance.kanbanColumnOrderDatasetId,
+                null,
+                constraints,
+                null
+            );
+            var rows = dataset && dataset.values ? dataset.values : [];
+
+            rows.forEach(function(row) {
+                if (!row) return;
+                if (row.msgErro) {
+                    console.warn('[CentralTarefas] Configuracao de ordem indisponivel:', row.msgErro);
+                    return;
+                }
+                if (!instance.isTruthyProcessStateFlag(row.ativo)) return;
+
+                var order = parseInt(row.ordem, 10);
+                var activityName = String(row.nomeAtividade || '').trim();
+                if (isNaN(order) || order < 0 || !activityName) return;
+
+                var processKey = instance.normalizeProcessId(row.processId);
+                var targetMap = config.global;
+                if (processKey && processKey !== '*') {
+                    if (!config.byProcess[processKey]) config.byProcess[processKey] = {};
+                    targetMap = config.byProcess[processKey];
+                }
+
+                var names = [activityName];
+                String(row.aliases || '').split('|').forEach(function(alias) {
+                    alias = String(alias || '').trim();
+                    if (alias) names.push(alias);
+                });
+
+                names.forEach(function(name) {
+                    var normalizedName = instance.normalizeActivityName(name);
+                    if (normalizedName) targetMap[normalizedName] = order;
+                });
+            });
+        } catch (e) {
+            // A configuracao e opcional: em falha, preserva a ordem natural do processState.
+            console.warn('[CentralTarefas] Nao foi possivel carregar a ordem configurada do Kanban:', e);
+        }
+
+        return config;
+    },
+
+    getConfiguredKanbanColumnOrder: function(processId, activityName) {
+        var config = this._kanbanColumnOrderConfig || this.createEmptyKanbanColumnOrderConfig();
+        var processKey = this.normalizeProcessId(processId);
+        var activityKey = this.normalizeActivityName(activityName);
+        var processMap = config.byProcess[processKey];
+
+        if (processMap && Object.prototype.hasOwnProperty.call(processMap, activityKey)) {
+            return processMap[activityKey];
+        }
+        if (Object.prototype.hasOwnProperty.call(config.global, activityKey)) {
+            return config.global[activityKey];
+        }
+        return null;
+    },
+
+    applyKanbanColumnOrder: function(activities, processId) {
+        var instance = this;
+        var decorated = (activities || []).map(function(activity, index) {
+            return {
+                activity: activity,
+                originalIndex: index,
+                configuredOrder: instance.getConfiguredKanbanColumnOrder(processId, activity.name)
+            };
+        });
+
+        decorated.sort(function(a, b) {
+            var aConfigured = a.configuredOrder !== null;
+            var bConfigured = b.configuredOrder !== null;
+
+            if (aConfigured && bConfigured && a.configuredOrder !== b.configuredOrder) {
+                return a.configuredOrder - b.configuredOrder;
+            }
+            if (aConfigured && !bConfigured) return -1;
+            if (!aConfigured && bConfigured) return 1;
+            return a.originalIndex - b.originalIndex;
+        });
+
+        return decorated.map(function(item) {
+            return item.activity;
+        });
     },
 
     isInitialActivityName: function(value) {
@@ -226,7 +299,7 @@ var Central_de_tarefas = SuperWidget.extend({
 
     isRequestInHiddenActivity: function(hiddenActivities, visibleActivities, request) {
         var sequence = String(request.currentActivitySequence || '').trim();
-        var displayName = this.getKanbanActivityDisplayName(request.currentActivity);
+        var displayName = String(request.currentActivity || '').trim();
         var nameKey = 'name:' + this.normalizeActivityName(displayName);
 
         // O codigo identifica o elemento BPMN sem ambiguidade. Isso evita ocultar
@@ -356,6 +429,7 @@ var Central_de_tarefas = SuperWidget.extend({
         instance.processLabelMap = {};
         instance._processStateCache = {};
         instance._hiddenProcessActivitiesCache = {};
+        instance._kanbanColumnOrderConfig = instance.createEmptyKanbanColumnOrderConfig();
 
         // Hide containers initially
         $('#carousel-section-' + instance.instanceId).addClass('d-none');
@@ -363,6 +437,9 @@ var Central_de_tarefas = SuperWidget.extend({
 
         // Load dataset or mock data
         instance.requests = instance.loadData();
+
+        // Ordem administrativa opcional. Falhas mantem a sequencia natural do processo.
+        instance.loadKanbanColumnOrder();
 
         // Resolve nomes amigáveis de responsáveis e solicitantes (id → nome)
         instance.loadColleagueNames();
@@ -614,90 +691,10 @@ var Central_de_tarefas = SuperWidget.extend({
         return descriptor;
     },
 
-    // Busca assíncrona as tarefas ativas de uma solicitação via REST.
-    // Invoca callback com { movementSequence, assigneeCode } da tarefa do usuário logado,
-    // ou null se não encontrar / falhar. NÃO bloqueia a UI.
-    fetchUserTaskContextAsync: function(processId, processInstanceId, callback) {
-        var instance = this;
-        if (!processId || !processInstanceId) return callback(null);
-
-        var loggedUser = instance.getLoggedUser();
-        if (!loggedUser) return callback(null);
-
-        var serverURL = WCMAPI.serverURL || (WCMAPI.getServerURL && WCMAPI.getServerURL()) || '';
-        var url = serverURL
-                + '/process-management/api/v2/processes/' + encodeURIComponent(processId)
-                + '/requests/tasks?processInstanceId=' + encodeURIComponent(processInstanceId);
-
-        var requestFn = (typeof FLUIGC !== 'undefined' && FLUIGC.ajax)
-            ? FLUIGC.ajax
-            : (typeof $ !== 'undefined' && $.ajax ? $.ajax : null);
-        if (!requestFn) return callback(null);
-
-        instance._perfCount('ajax.requests-tasks');
-        var _t0 = instance._perfNow();
-
-        try {
-            requestFn({
-                dataType: 'json',
-                url: url,
-                type: 'GET',
-                contentType: 'application/json',
-                async: true,
-                loading: false,
-                success: function(result) {
-                    if (instance.debugPerf) {
-                        console.log('[CentralTarefas][perf] ajax.requests-tasks: ' + Math.round(instance._perfNow() - _t0) + 'ms');
-                    }
-                    var items = (result && result.items) ? result.items : [];
-                    var userTasks = [];
-                    for (var i = 0; i < items.length; i++) {
-                        var it = items[i];
-                        var code = it.assignee && it.assignee.code;
-                        if (code === loggedUser && it.movementSequence) {
-                            userTasks.push(it);
-                        }
-                    }
-                    if (userTasks.length === 0) return callback(null);
-
-                    userTasks.sort(function(a, b) {
-                        var movA = parseInt(a.movementSequence, 10) || 0;
-                        var movB = parseInt(b.movementSequence, 10) || 0;
-                        if (movA !== movB) return movB - movA;
-
-                        var dateA = new Date(a.assignStartDate || a.startDate || 0).getTime() || 0;
-                        var dateB = new Date(b.assignStartDate || b.startDate || 0).getTime() || 0;
-                        return dateB - dateA;
-                    });
-
-                    callback({
-                        movementSequence: userTasks[0].movementSequence,
-                        assigneeCode: userTasks[0].assignee && userTasks[0].assignee.code
-                    });
-                },
-                error: function(xhr, st, err) {
-                    if (instance.debugPerf) {
-                        console.log('[CentralTarefas][perf] ajax.requests-tasks (error): ' + Math.round(instance._perfNow() - _t0) + 'ms');
-                    }
-                    console.error("Erro ao buscar tarefas da solicitação:", st, err);
-                    callback(null);
-                }
-            });
-        } catch (e) {
-            console.error("Falha na consulta REST de tarefas:", e);
-            callback(null);
-        }
-    },
-
-    // Abre a solicitação no Fluig em nova aba (híbrido):
-    //  - se houver tarefa ativa do usuário logado → abre o formulário da tarefa
-    //  - senão → abre a tela de detalhes/consulta
-    //
-    // window.open precisa rodar no mesmo tick do clique (handler do gesto) para
-    // não ser bloqueado pelo popup blocker. Por isso a janela é aberta JÁ aqui
-    // com about:blank + loader, e só depois recebe a URL final via async.
+    // Abre a solicitação no Fluig em nova aba, sempre em modo de visualização.
+    // A URL de detalhes não informa movimento nem responsável da tarefa, evitando
+    // que o usuário seja tratado como executor da atividade atual.
     openRequest: function(task) {
-        var instance = this;
         if (!task || !task.processInstanceId) return;
 
         if (typeof WCMAPI === 'undefined') {
@@ -715,65 +712,21 @@ var Central_de_tarefas = SuperWidget.extend({
             return;
         }
 
-        var base = serverURL + '/portal/p/' + tenant + '/pageworkflowview?';
-        var fallbackUrl = base + 'app_ecm_workflowview_detailsProcessInstanceID=' + encodeURIComponent(task.processInstanceId);
+        var viewUrl = serverURL
+            + '/portal/p/' + encodeURIComponent(tenant)
+            + '/pageworkflowview?app_ecm_workflowview_detailsProcessInstanceID='
+            + encodeURIComponent(task.processInstanceId);
 
-        // Abre a janela AGORA, no tick do clique. Sem isso o popup blocker bloqueia.
-        var win = window.open('about:blank', '_blank');
+        // A abertura ocorre diretamente no evento de clique para não acionar o
+        // bloqueador de popups dos navegadores.
+        var win = window.open(viewUrl, '_blank');
         if (!win) {
             console.warn("Abertura da solicitação bloqueada pelo navegador. Habilite popups para este site.");
             return;
         }
 
-        // Loader simples enquanto a chamada async resolve a tarefa
-        try {
-            win.document.open();
-            var openingRequestText = instance._t('central.tarefas.abrindo.solicitacao');
-            win.document.write(
-                '<!doctype html><html><head><meta charset="utf-8">' +
-                '<title>' + instance.escapeHtml(openingRequestText) + '</title>' +
-                '<style>body{font-family:Lato,Arial,sans-serif;color:#5a5a5a;padding:40px;text-align:center}</style>' +
-                '</head><body>' + instance.escapeHtml(openingRequestText) + '</body></html>'
-            );
-            win.document.close();
-        } catch (eDoc) {
-            // alguns navegadores podem bloquear escrita no about:blank — segue sem loader
-        }
-
-        // Timeout de segurança: se a chamada REST pendurar (rede lenta, servidor sem
-        // resposta, SDK que não dispara success/error), evita deixar a aba presa em
-        // "Abrindo solicitação…" indefinidamente — força navegação para o fallbackUrl.
-        var resolved = false;
-        var navigateTo = function(targetUrl) {
-            if (resolved) return;
-            resolved = true;
-            try {
-                win.location.href = targetUrl;
-            } catch (eNav) {
-                    console.error(instance._t('central.tarefas.console.erro.navegar.solicitacao'), eNav);
-            }
-        };
-        var timeoutHandle = setTimeout(function() {
-            if (resolved) return;
-            console.warn("[CentralTarefas] Timeout (15s) ao buscar contexto da tarefa — abrindo tela de detalhes em fallback.");
-            navigateTo(fallbackUrl);
-        }, 15000);
-
-        // Resolve contexto da tarefa e atualiza a janela com a URL final
-        instance.fetchUserTaskContextAsync(task.processId, task.processInstanceId, function(ctx) {
-            clearTimeout(timeoutHandle);
-            var finalUrl;
-            if (ctx && ctx.movementSequence && ctx.assigneeCode) {
-                finalUrl = base
-                    + 'app_ecm_workflowview_processInstanceId=' + encodeURIComponent(task.processInstanceId)
-                    + '&app_ecm_workflowview_currentMovto=' + encodeURIComponent(ctx.movementSequence)
-                    + '&app_ecm_workflowview_taskUserId=' + encodeURIComponent(ctx.assigneeCode)
-                    + '&app_ecm_workflowview_managerMode=false';
-            } else {
-                finalUrl = fallbackUrl;
-            }
-            navigateTo(finalUrl);
-        });
+        // Impede que a nova aba mantenha referência à página da widget.
+        try { win.opener = null; } catch (eOpener) { /* sem impacto na navegação */ }
     },
 
     // Hybrid data loader: Fluig dataset -> fallback to rich mock data
@@ -1006,11 +959,17 @@ var Central_de_tarefas = SuperWidget.extend({
                         cardDocumentId = null;
                     }
                     var descriptorText = (cardDocumentId && descriptorMap[cardDocumentId]) ? descriptorMap[cardDocumentId] : null;
+                    var processVersion = parseInt(
+                        w.version || w.processVersion || w["workflowProcessPK.version"] || 0,
+                        10
+                    );
+                    processVersion = !isNaN(processVersion) && processVersion > 0 ? processVersion : null;
 
                     data.push({
                         id: "FLUIG-" + instanceId,
                         processInstanceId: instanceId,
                         processId: procId,
+                        processVersion: processVersion,
                         processName: procName,
                         requester: requester,
                         requesterId: requesterId,
@@ -1714,15 +1673,24 @@ var Central_de_tarefas = SuperWidget.extend({
         instance.renderKanban();
     },
 
+    getProcessStateCacheKey: function(processId, processVersion) {
+        var parsedVersion = parseInt(processVersion, 10);
+        var versionKey = !isNaN(parsedVersion) && parsedVersion > 0 ? String(parsedVersion) : 'latest';
+        return String(processId || '') + '::' + versionKey;
+    },
+
     // Helper to get workflow activity list
-    getProcessActivities: function(processId) {
+    getProcessActivities: function(processId, processVersion) {
         var instance = this;
+        var parsedVersion = parseInt(processVersion, 10);
+        var hasProcessVersion = !isNaN(parsedVersion) && parsedVersion > 0;
+        var cacheKey = instance.getProcessStateCacheKey(processId, hasProcessVersion ? parsedVersion : null);
 
         // Cache hit — evita chamada do dataset processState a cada renderKanban/selectProcess.
-        // Atividades de um processo são estruturais (diagrama BPM) e não mudam em runtime.
-        if (instance._processStateCache && instance._processStateCache.hasOwnProperty(processId)) {
+        // A lista é específica da versão do diagrama que originou a solicitação.
+        if (instance._processStateCache && instance._processStateCache.hasOwnProperty(cacheKey)) {
             instance._perfCount('processState.cacheHit');
-            return instance._processStateCache[processId];
+            return instance._processStateCache[cacheKey];
         }
 
         var activities = [];
@@ -1733,6 +1701,14 @@ var Central_de_tarefas = SuperWidget.extend({
             try {
                 var constraints = [];
                 constraints.push(DatasetFactory.createConstraint("processStatePK.processId", processId, processId, ConstraintType.MUST));
+                if (hasProcessVersion) {
+                    constraints.push(DatasetFactory.createConstraint(
+                        "processStatePK.version",
+                        String(parsedVersion),
+                        String(parsedVersion),
+                        ConstraintType.MUST
+                    ));
+                }
 
                 var companyId = WCMAPI.getCompanyId ? WCMAPI.getCompanyId() : (WCMAPI.organizationId || "1");
                 constraints.push(DatasetFactory.createConstraint("processStatePK.companyId", companyId, companyId, ConstraintType.MUST));
@@ -1779,8 +1755,6 @@ var Central_de_tarefas = SuperWidget.extend({
                             } else if (instance.isFinalKanbanActivity(activity)) {
                                 activity.name = instance._t('central.tarefas.kanban.finalizadas');
                                 activity._isFinal = true;
-                            } else {
-                                activity.name = instance.getKanbanActivityDisplayName(activity.name);
                             }
 
                             if (!activity.name) return;
@@ -1839,7 +1813,7 @@ var Central_de_tarefas = SuperWidget.extend({
                                 ? instance._t('central.tarefas.kanban.finalizadas')
                                 : (fallbackIsInitial
                                     ? instance._t('central.tarefas.kanban.rascunho')
-                                    : instance.getKanbanActivityDisplayName(r.currentActivity)),
+                                    : String(r.currentActivity || '').trim()),
                             _isInitial: fallbackIsInitial,
                             _isFinal: fallbackIsFinal
                         });
@@ -1849,12 +1823,12 @@ var Central_de_tarefas = SuperWidget.extend({
             activities = acts;
         }
 
-        // Memoiza por processId (incluindo array vazio — consistência entre chamadas).
+        // Memoiza por processo e versão (incluindo array vazio — consistência entre chamadas).
         if (instance._processStateCache) {
-            instance._processStateCache[processId] = activities;
+            instance._processStateCache[cacheKey] = activities;
         }
         if (instance._hiddenProcessActivitiesCache) {
-            instance._hiddenProcessActivitiesCache[processId] = hiddenActivities;
+            instance._hiddenProcessActivitiesCache[cacheKey] = hiddenActivities;
         }
 
         return activities;
@@ -1884,6 +1858,15 @@ var Central_de_tarefas = SuperWidget.extend({
         var processRequests = baseRequests.filter(function(r) {
             return r.processId === processId;
         });
+        var processVersion = null;
+        processRequests.forEach(function(request) {
+            var requestVersion = parseInt(request.processVersion, 10);
+            if (!isNaN(requestVersion) && requestVersion > 0
+                && (processVersion === null || requestVersion > processVersion)) {
+                processVersion = requestVersion;
+            }
+        });
+        var processStateCacheKey = instance.getProcessStateCacheKey(processId, processVersion);
 
         // Filter requests further based on the selected Status
         var statusRequests = processRequests.filter(function(r) {
@@ -1904,9 +1887,9 @@ var Central_de_tarefas = SuperWidget.extend({
         }
 
         // Retrieve the ordered workflow activities for this process
-        var activities = instance.getProcessActivities(processId).slice();
+        var activities = instance.getProcessActivities(processId, processVersion).slice();
         var hiddenActivities = (instance._hiddenProcessActivitiesCache
-            && instance._hiddenProcessActivitiesCache[processId]) || [];
+            && instance._hiddenProcessActivitiesCache[processStateCacheKey]) || [];
 
         // Cartoes parados em gateways/eventos intermediarios tambem ficam fora do
         // Kanban, mantendo o contador coerente com as colunas efetivamente exibidas.
@@ -1948,7 +1931,7 @@ var Central_de_tarefas = SuperWidget.extend({
 
             var displayCurrent = isInitialRequest
                 ? instance._t('central.tarefas.kanban.rascunho')
-                : instance.getKanbanActivityDisplayName(req.currentActivity);
+                : String(req.currentActivity || '').trim();
             var normalizedCurrent = instance.normalizeActivityName(displayCurrent);
             var currentKey = currentSequence ? 'seq:' + currentSequence : 'name:' + normalizedCurrent;
             if (normalizedCurrent && !knownActivities[currentKey]) {
@@ -1979,6 +1962,9 @@ var Central_de_tarefas = SuperWidget.extend({
         // processState pode conter atividades repetidas por codigo ou descricao.
         // A consolidacao ocorre antes da distribuicao para garantir uma coluna unica.
         activities = instance.mergeKanbanActivities(activities);
+
+        // Aplica a ordem compartilhada e mantem atividades nao configuradas na ordem natural.
+        activities = instance.applyKanbanColumnOrder(activities, processId);
 
         // A coluna de inicio, quando existir, recebe o nome Rascunho e abre o fluxo.
         var initialActivityIndex = -1;
@@ -2016,7 +2002,7 @@ var Central_de_tarefas = SuperWidget.extend({
         var requestsByActivity = activities.map(function() { return []; });
         finalRequests.forEach(function(req) {
             var reqSequence = String(req.currentActivitySequence || '');
-            var reqDisplayName = instance.getKanbanActivityDisplayName(req.currentActivity);
+            var reqDisplayName = String(req.currentActivity || '').trim();
             var reqName = instance.normalizeActivityName(reqDisplayName);
             var targetIndex = req.status === 'concluidas' && finalActivityIndex !== -1
                 ? finalActivityIndex
