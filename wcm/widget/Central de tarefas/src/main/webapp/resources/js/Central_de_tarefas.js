@@ -81,7 +81,9 @@ var Central_de_tarefas = SuperWidget.extend({
     createEmptyKanbanColumnOrderConfig: function() {
         return {
             global: {},
-            byProcess: {}
+            byProcess: {},
+            displayGlobal: {},
+            displayByProcess: {}
         };
     },
 
@@ -123,9 +125,12 @@ var Central_de_tarefas = SuperWidget.extend({
 
                 var processKey = instance.normalizeProcessId(row.processId);
                 var targetMap = config.global;
+                var targetDisplayMap = config.displayGlobal;
                 if (processKey && processKey !== '*') {
                     if (!config.byProcess[processKey]) config.byProcess[processKey] = {};
+                    if (!config.displayByProcess[processKey]) config.displayByProcess[processKey] = {};
                     targetMap = config.byProcess[processKey];
+                    targetDisplayMap = config.displayByProcess[processKey];
                 }
 
                 var names = [activityName];
@@ -136,7 +141,10 @@ var Central_de_tarefas = SuperWidget.extend({
 
                 names.forEach(function(name) {
                     var normalizedName = instance.normalizeActivityName(name);
-                    if (normalizedName) targetMap[normalizedName] = order;
+                    if (normalizedName) {
+                        targetMap[normalizedName] = order;
+                        targetDisplayMap[normalizedName] = activityName;
+                    }
                 });
             });
         } catch (e) {
@@ -160,6 +168,22 @@ var Central_de_tarefas = SuperWidget.extend({
             return config.global[activityKey];
         }
         return null;
+    },
+
+    getConfiguredKanbanColumnDisplayName: function(processId, activityName) {
+        var originalName = String(activityName || '').trim();
+        var config = this._kanbanColumnOrderConfig || this.createEmptyKanbanColumnOrderConfig();
+        var processKey = this.normalizeProcessId(processId);
+        var activityKey = this.normalizeActivityName(originalName);
+        var processMap = config.displayByProcess && config.displayByProcess[processKey];
+
+        if (processMap && Object.prototype.hasOwnProperty.call(processMap, activityKey)) {
+            return processMap[activityKey] || originalName;
+        }
+        if (config.displayGlobal && Object.prototype.hasOwnProperty.call(config.displayGlobal, activityKey)) {
+            return config.displayGlobal[activityKey] || originalName;
+        }
+        return originalName;
     },
 
     applyKanbanColumnOrder: function(activities, processId) {
@@ -2027,7 +2051,12 @@ var Central_de_tarefas = SuperWidget.extend({
         activities.forEach(function(activity, activityIndex) {
             var activityRequests = requestsByActivity[activityIndex] || [];
 
-            var activityName = activity.name;
+            // O nome principal da configuracao e o rotulo canonico exibido. Os aliases
+            // reconhecem o stateName bruto do diagrama em outros idiomas sem alterar
+            // a associacao dos cartoes, que continua baseada em codigo/nome original.
+            var activityName = activity._isInitial || activity._isFinal
+                ? activity.name
+                : instance.getConfiguredKanbanColumnDisplayName(processId, activity.name);
             var colIdSuffix = activity._isInitial
                 ? 'rascunho'
                 : (activity._isFinal

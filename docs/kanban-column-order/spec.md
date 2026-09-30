@@ -22,7 +22,7 @@ Fora do escopo:
 
 - Alterar os 60 diagramas BPM.
 - Publicar formulário, dataset ou widget no servidor.
-- Alterar o nome traduzido retornado por `processState.stateName`.
+- Consultar diretamente os arquivos de literais dos processos; quando um alias corresponde ao `processState.stateName`, o nome principal da configuração passa a ser o rótulo canônico exibido.
 
 ## Modelo de configuração
 
@@ -80,4 +80,3 @@ Rollback: remover a chamada de carregamento/ordenação da widget ou deixar o da
 - O formulário será publicado manualmente com dataset `ds_config_ordem_kanban` e permissão de leitura compatível com os usuários da Central.
 - Os nomes compartilhados pelos processos são suficientemente padronizados; aliases cobrem idiomas ou grafias alternativas.
 - A existência e a publicação real dos datasets não podem ser testadas localmente sem um servidor Fluig conectado.
-
