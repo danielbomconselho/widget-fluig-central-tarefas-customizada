@@ -1,0 +1,29 @@
+.corrigir-grupos .corrigir-grupos__select {
+    min-height: 18rem;
+}
+
+.corrigir-grupos .corrigir-grupos__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.corrigir-grupos .corrigir-grupos__actions .btn {
+    margin-bottom: 0.5rem;
+}
+
+.corrigir-grupos .table > thead > tr > th,
+.corrigir-grupos .table > tbody > tr > td {
+    vertical-align: middle;
+}
+
+.corrigir-grupos [data-users] .table-responsive {
+    max-height: 32rem;
+    overflow-y: auto;
+}
+
+@media (max-width: 767px) {
+    .corrigir-grupos .corrigir-grupos__actions .btn {
+        width: 100%;
+    }
+}

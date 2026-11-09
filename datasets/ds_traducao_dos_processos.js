@@ -86,9 +86,9 @@ function createDataset(fields, constraints, sortFields) {
 			dataset.addRow(new Array(errorMessage));
 		}
 	} finally {
-		try { if (rs != null) rs.close(); } catch (e1) {}
-		try { if (stmt != null) stmt.close(); } catch (e2) {}
-		try { if (conn != null) conn.close(); } catch (e3) {}
+		try { if (rs != null) rs.close(); } catch (e1) { }
+		try { if (stmt != null) stmt.close(); } catch (e2) { }
+		try { if (conn != null) conn.close(); } catch (e3) { }
 	}
 
 	return dataset;

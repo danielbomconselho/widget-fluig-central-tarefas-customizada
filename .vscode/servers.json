@@ -20,9 +20,9 @@
 			"ssl": true,
 			"port": 443,
 			"username": "daniel.sales",
-			"password": "eyJpdiI6IjZhYzlmYzU4ODIwMGJjMTFmNzUxYjUwMzg1YWMzZTEwIiwic2FsdCI6ImU2MzQxNGFiOTA3NThlYTk4ZTRmZTI4MzdjZTUzOTgyIiwidGV4dCI6IjY2NzhhMzI2Mzc0YTZmYWEyZjFiYWZkMGZkODdkN2Q5In0=",
+			"password": "eyJpdiI6IjgxZDA3MDI1Nzk2NjM0MjgxODJlYTAzYjhhYmI5MzA4Iiwic2FsdCI6IjgzMDRjYjllZmNlNGNmMmY1NGJiZjM2MGMxODc2ZDNmIiwidGV4dCI6IjQ2ZTQ1YzZjZDM2MjkwYjA5ODBhNzEyOTA3Y2U0MjM2In0=",
 			"userCode": "01362904694",
-			"confirmExporting": true,
+			"confirmExporting": false,
 			"hasBrowser": false,
 			"companyId": 1
 		}
